@@ -54,6 +54,33 @@
     <section id="result" class="result hidden"></section>
   </main>
 
+  <div id="tutorialOverlay" class="tutorial-overlay hidden">
+    <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
+    <div id="tutorialDialog" class="tutorial-dialog">
+      <div class="tutorial-progress">
+        <span id="tutorialStep">1</span> / <span id="tutorialTotal">5</span>
+      </div>
+      <h3 id="tutorialTitle">新手教学</h3>
+      <p id="tutorialContent">欢迎来到深夜便利店！</p>
+      <div class="tutorial-actions">
+        <button id="tutorialSkip" class="secondary" type="button">跳过教学</button>
+        <button id="tutorialNext" class="primary" type="button">下一步</button>
+      </div>
+    </div>
+    <div id="tutorialArrow" class="tutorial-arrow"></div>
+  </div>
+
+  <div id="tutorialChoice" class="tutorial-choice hidden">
+    <div class="tutorial-choice-dialog">
+      <h3>是否开启新手教学？</h3>
+      <p>教学将引导你完成游戏的基本操作。</p>
+      <div class="tutorial-choice-actions">
+        <button id="choiceNo" class="secondary" type="button">跳过</button>
+        <button id="choiceYes" class="primary" type="button">开始教学</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
