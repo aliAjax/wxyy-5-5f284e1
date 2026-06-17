@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>深夜便利店补货</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="topbar">
+      <div>
+        <p class="eyebrow">Night Shift Stocker</p>
+        <h1>深夜便利店补货</h1>
+      </div>
+      <div class="status-strip">
+        <span>时间 <strong id="clock">00:00</strong></span>
+        <span>体力 <strong id="energy">100</strong></span>
+        <span>销售额 <strong id="sales">0</strong></span>
+        <span>缺货 <strong id="misses">0</strong></span>
+      </div>
+    </section>
+
+    <section class="game-layout">
+      <aside class="panel">
+        <h2>仓库货箱</h2>
+        <div id="crateButtons" class="crate-buttons"></div>
+        <div class="carry-box">
+          <span>手上</span>
+          <strong id="carry">空</strong>
+        </div>
+        <div id="shelfList" class="shelf-list"></div>
+      </aside>
+
+      <section class="board-wrap">
+        <div id="board" class="board"></div>
+        <div class="controls">
+          <button id="upBtn" type="button">上</button>
+          <button id="leftBtn" type="button">左</button>
+          <button id="actionBtn" type="button">互动</button>
+          <button id="rightBtn" type="button">右</button>
+          <button id="downBtn" type="button">下</button>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <h2>夜班记录</h2>
+        <div id="log" class="log"></div>
+        <button id="startBtn" class="primary" type="button">开始营业</button>
+        <button id="restartBtn" class="secondary" type="button">重新开始</button>
+      </aside>
+    </section>
+
+    <section id="result" class="result hidden"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
