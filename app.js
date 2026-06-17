@@ -98,12 +98,19 @@ const tutorialSteps = [
     action: "restockShelf"
   },
   {
-    title: "第五步：完成教学",
-    content: "太棒了！你已经完成了一次完整的补货流程：开始营业 → 移动 → 拿货 → 补货。现在你已经掌握了游戏的基本操作。点击「完成」按钮结束教学，开始你的便利店夜班吧！",
+    title: "第五步：查看结算",
+    content: "夜班即将结束！营业时间到后会出现结算面板，展示你的销售额、缺货次数、剩余体力和最终评分。等待结算出现后，教学即自动完成。",
     target: () => document.querySelector('.board-wrap'),
     position: "top",
-    autoNext: true,
-    action: "finish"
+    autoNext: false,
+    action: "finish",
+    onStart: () => {
+      state.minute = 115;
+      if (!timer) {
+        timer = setInterval(tick, 1200);
+      }
+      render();
+    }
   }
 ];
 
@@ -231,9 +238,7 @@ function bindTutorialControls() {
 }
 
 function showTutorialChoice(isFirstVisit) {
-  if (state.running) {
-    resetGame();
-  }
+  resetGame();
   tutorialChoice.classList.remove("hidden");
 }
 
@@ -273,6 +278,10 @@ function showTutorialStep(stepIndex) {
   } else {
     tutorialNextBtn.classList.add("hidden");
     tutorial.waitingForAction = true;
+  }
+
+  if (step.onStart) {
+    step.onStart();
   }
 }
 
@@ -402,12 +411,8 @@ function endTutorial() {
   localStorage.setItem("tutorialCompleted", "true");
   addLog("🎉 新手教学完成！开始你的便利店夜班吧！");
 
-  if (!state.running) {
-    state = freshState();
-  } else {
-    if (!timer) {
-      timer = setInterval(tick, 1200);
-    }
+  if (state.running && !timer) {
+    timer = setInterval(tick, 1200);
   }
 
   render();
@@ -443,10 +448,12 @@ function startGame() {
 
 function resetGame() {
   clearInterval(timer);
+  timer = null;
   state = freshState();
   resultEl.classList.add("hidden");
   if (tutorial.active) {
     tutorial.active = false;
+    tutorial.waitingForAction = false;
     tutorialOverlay.classList.add("hidden");
   }
   render();
@@ -531,6 +538,7 @@ function finish(reason) {
   if (!state.running) return;
   state.running = false;
   clearInterval(timer);
+  timer = null;
   const score = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   resultEl.innerHTML = `<h2>${reason}</h2><p>最终销售额${state.sales}，缺货${state.misses}次，剩余体力${state.energy}，评分${score}。</p>`;
   resultEl.classList.remove("hidden");
