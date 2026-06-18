@@ -334,6 +334,8 @@ function updateGoalProgress() {
     const template = getGoalTemplate(goal.templateType);
     if (!template) return;
 
+    if (goal.endOnly) return;
+
     const progress = template.getProgress(state, goal);
 
     if (goal.failOnBreak) {
@@ -364,20 +366,15 @@ function evaluateEndGoals() {
 
   state.goals.forEach(goal => {
     if (goal.completed || goal.failed) return;
-    if (!goal.endOnly) return;
 
     const template = getGoalTemplate(goal.templateType);
     if (!template) return;
 
     const progress = template.getProgress(state, goal);
 
-    if (goal.inverse) {
-      if (progress > goal.target) {
-        goal.failed = true;
-      } else {
-        goal.completed = true;
-        addLog(`✅ 目标达成：${goal.title}（+${goal.reward}分）`);
-      }
+    if (goal.failOnBreak || goal.inverse) {
+      goal.completed = true;
+      addLog(`✅ 目标达成：${goal.title}（+${goal.reward}分）`);
     } else {
       if (progress >= goal.target) {
         goal.completed = true;
@@ -872,6 +869,8 @@ function customerVisit() {
     state.sales += goods[shelf.good].price;
     const prevCount = state.salesCount[shelf.good] || 0;
     state.salesCount[shelf.good] = prevCount + 1;
+    const prevSessionCount = state.sessionSalesCount[shelf.good] || 0;
+    state.sessionSalesCount[shelf.good] = prevSessionCount + 1;
     addLog(`顾客买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
 
     if (!codexOverlay.classList.contains("hidden")) {
