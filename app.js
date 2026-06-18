@@ -91,6 +91,12 @@ function getCurrentLevel() {
   return levels.find(l => l.id === currentLevelId) || levels[0];
 }
 
+function getCurrentLevelGoodKeys() {
+  const levelGoodKeys = getCurrentLevel().goodKeys || [];
+  const validGoodKeys = levelGoodKeys.filter((key) => goods[key]);
+  return validGoodKeys.length > 0 ? validGoodKeys : Object.keys(goods);
+}
+
 const boardEl = document.getElementById("board");
 const crateButtonsEl = document.getElementById("crateButtons");
 const shelfListEl = document.getElementById("shelfList");
@@ -205,7 +211,7 @@ const goalTemplates = [
     type: "good_sales",
     name: "指定商品销售额",
     generate: () => {
-      const goodKeys = Object.keys(goods);
+      const goodKeys = getCurrentLevelGoodKeys();
       const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
       const good = goods[goodKey];
       const multipliers = [4, 5, 6, 7, 8];
@@ -229,7 +235,7 @@ const goalTemplates = [
     type: "good_count",
     name: "指定商品销量",
     generate: () => {
-      const goodKeys = Object.keys(goods);
+      const goodKeys = getCurrentLevelGoodKeys();
       const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
       const good = goods[goodKey];
       const targets = [5, 6, 7, 8, 10];
@@ -393,7 +399,7 @@ function freshState() {
     misses: 0,
     player: { ...level.playerStart },
     carry: null,
-    selected: "snack",
+    selected: getCurrentLevelGoodKeys()[0],
     shelves: level.shelves.map((shelf) => ({ ...shelf })),
     log: ["卷帘门半开，夜班还没开始。"],
     salesCount: {
@@ -984,7 +990,8 @@ function endTutorial() {
 
 function renderCrates() {
   crateButtonsEl.innerHTML = "";
-  Object.entries(goods).forEach(([key, good]) => {
+  getCurrentLevelGoodKeys().forEach((key) => {
+    const good = goods[key];
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = `拿${good.name}`;
@@ -1055,7 +1062,7 @@ function tick() {
 
 function generateIncomingCustomer() {
   const level = getCurrentLevel();
-  const goodKeys = level.goodKeys;
+  const goodKeys = getCurrentLevelGoodKeys();
   const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
   const lastArrival = state.customers.incoming.length > 0
     ? state.customers.incoming[state.customers.incoming.length - 1].arrivalTick
