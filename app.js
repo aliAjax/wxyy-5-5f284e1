@@ -1095,6 +1095,19 @@ function finish(reason) {
   state.running = false;
   clearInterval(timer);
   timer = null;
+
+  const remaining = state.customers.waiting.length;
+  if (remaining > 0) {
+    addLog(`🌙 打烊时间到！店内还有 ${remaining} 位顾客未买到商品，全部计入缺货。`);
+    state.customers.waiting.forEach(customer => {
+      state.misses += 1;
+      state.customers.missedCount += 1;
+      const good = goods[customer.goodKey];
+      addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
+    });
+    state.customers.waiting = [];
+  }
+
   localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
 
   evaluateEndGoals();
