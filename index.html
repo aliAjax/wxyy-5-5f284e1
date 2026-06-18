@@ -41,6 +41,11 @@
       </aside>
 
       <section class="board-wrap">
+        <div id="editorBanner" class="editor-banner hidden">
+          <span class="editor-banner-icon">🛠️</span>
+          <span class="editor-banner-title">货架布局编辑模式</span>
+          <span class="editor-banner-hint">点击货架选中 → 点击空格移动 → 右侧切换商品</span>
+        </div>
         <div id="board" class="board"></div>
         <div class="controls">
           <button id="upBtn" type="button">上</button>
@@ -52,6 +57,21 @@
       </section>
 
       <aside class="panel">
+        <div id="editorPanel" class="editor-panel hidden">
+          <h2>🛠️ 货架编辑器</h2>
+          <div id="editorSelectedInfo" class="editor-selected-info">
+            <p class="editor-info-empty">未选中货架</p>
+          </div>
+          <div id="editorGoodPicker" class="editor-good-picker hidden">
+            <p class="editor-picker-label">切换商品类型：</p>
+            <div id="editorGoodButtons" class="editor-good-buttons"></div>
+          </div>
+          <div class="editor-actions">
+            <button id="saveLayoutBtn" class="primary" type="button">💾 保存布局</button>
+            <button id="cancelEditBtn" class="secondary" type="button">↩️ 取消编辑</button>
+          </div>
+          <div id="editorLog" class="editor-log"></div>
+        </div>
         <h2>🎯 夜班目标</h2>
         <div id="goalsList" class="goals-list">
           <p class="goals-empty">点击「开始营业」生成本次夜班目标</p>
@@ -73,9 +93,12 @@
         </div>
         <h2 style="margin-top: 18px;">夜班记录</h2>
         <div id="log" class="log"></div>
-        <button id="startBtn" class="primary" type="button">开始营业</button>
-        <button id="restartBtn" class="secondary" type="button">重新开始</button>
-        <button id="changeLevelBtn" class="secondary" type="button">🔄 切换关卡</button>
+        <div id="normalControls">
+          <button id="startBtn" class="primary" type="button">开始营业</button>
+          <button id="editLayoutBtn" class="secondary" type="button">🛠️ 编辑货架布局</button>
+          <button id="restartBtn" class="secondary" type="button">重新开始</button>
+          <button id="changeLevelBtn" class="secondary" type="button">🔄 切换关卡</button>
+        </div>
       </aside>
     </section>
 

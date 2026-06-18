@@ -149,6 +149,17 @@ const clerkOverlay = document.getElementById("clerkOverlay");
 const clerkCloseBtn = document.getElementById("clerkCloseBtn");
 const clerkBodyEl = document.getElementById("clerkBody");
 
+const editorBanner = document.getElementById("editorBanner");
+const editorPanel = document.getElementById("editorPanel");
+const editorSelectedInfo = document.getElementById("editorSelectedInfo");
+const editorGoodPicker = document.getElementById("editorGoodPicker");
+const editorGoodButtons = document.getElementById("editorGoodButtons");
+const editorLog = document.getElementById("editorLog");
+const editLayoutBtn = document.getElementById("editLayoutBtn");
+const saveLayoutBtn = document.getElementById("saveLayoutBtn");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+const normalControls = document.getElementById("normalControls");
+
 const codexState = {
   selectedGood: null
 };
@@ -369,6 +380,275 @@ const goalTemplates = [
 
 let state;
 let timer;
+
+const editor = {
+  active: false,
+  selectedShelfId: null,
+  originalShelves: [],
+  logs: []
+};
+
+function addEditorLog(text, type = "info") {
+  editor.logs.push({ text, type, time: Date.now() });
+  editor.logs = editor.logs.slice(-20);
+  renderEditorLog();
+}
+
+function renderEditorLog() {
+  if (!editorLog) return;
+  editorLog.innerHTML = "";
+  editor.logs.forEach(entry => {
+    const p = document.createElement("p");
+    p.className = `log-${entry.type}`;
+    p.textContent = entry.text;
+    editorLog.appendChild(p);
+  });
+}
+
+function getEditorShelves() {
+  return state.shelves;
+}
+
+function findShelfById(id) {
+  return state.shelves.find(s => s.id === id);
+}
+
+function findShelfAt(x, y, excludeId = null) {
+  return state.shelves.find(s => s.x === x && s.y === y && s.id !== excludeId);
+}
+
+function isReservedPosition(x, y) {
+  const level = getCurrentLevel();
+  if (x === level.warehousePos.x && y === level.warehousePos.y) return { blocked: true, reason: "仓库" };
+  if (x === level.checkoutPos.x && y === level.checkoutPos.y) return { blocked: true, reason: "收银台" };
+  return { blocked: false };
+}
+
+function canPlaceShelfAt(x, y, shelfId) {
+  const level = getCurrentLevel();
+  if (x < 0 || x >= level.mapCols || y < 0 || y >= level.mapRows) {
+    return { ok: false, reason: "超出地图范围" };
+  }
+  const reserved = isReservedPosition(x, y);
+  if (reserved.blocked) {
+    return { ok: false, reason: `不能覆盖${reserved.reason}` };
+  }
+  const occupant = findShelfAt(x, y, shelfId);
+  if (occupant) {
+    return { ok: false, reason: `该位置已有${occupant.id}货架` };
+  }
+  return { ok: true };
+}
+
+function enterEditMode() {
+  if (state.running) {
+    addLog("游戏进行中无法编辑布局，请先结束或重新开始。");
+    return;
+  }
+  editor.active = true;
+  editor.selectedShelfId = null;
+  editor.originalShelves = state.shelves.map(s => ({ ...s }));
+  editor.logs = [];
+  addEditorLog("进入布局编辑模式，原始布局已备份。", "info");
+  addEditorLog("提示：点击货架选中，再点击空格移动。", "info");
+  updateEditorUI();
+  render();
+}
+
+function exitEditMode(restoreOriginal) {
+  if (restoreOriginal) {
+    state.shelves = editor.originalShelves.map(s => ({ ...s }));
+    addEditorLog("已取消编辑，恢复原始布局。", "info");
+  }
+  editor.active = false;
+  editor.selectedShelfId = null;
+  updateEditorUI();
+  render();
+}
+
+function selectShelf(shelfId) {
+  if (!editor.active) return;
+  if (editor.selectedShelfId === shelfId) {
+    editor.selectedShelfId = null;
+    addEditorLog("取消选中货架。", "info");
+  } else {
+    editor.selectedShelfId = shelfId;
+    const shelf = findShelfById(shelfId);
+    if (shelf) {
+      addEditorLog(`已选中${shelf.id}货架（${goods[shelf.good].name}），点击空格移动。`, "success");
+    }
+  }
+  updateEditorUI();
+  render();
+}
+
+function tryMoveSelectedShelfTo(x, y) {
+  if (!editor.active || !editor.selectedShelfId) return;
+  const shelf = findShelfById(editor.selectedShelfId);
+  if (!shelf) return;
+  if (shelf.x === x && shelf.y === y) {
+    editor.selectedShelfId = null;
+    addEditorLog("位置未变，取消选中。", "info");
+    updateEditorUI();
+    render();
+    return;
+  }
+  const check = canPlaceShelfAt(x, y, shelf.id);
+  if (!check.ok) {
+    addEditorLog(`无法移动：${check.reason}！`, "error");
+    return;
+  }
+  const oldX = shelf.x;
+  const oldY = shelf.y;
+  shelf.x = x;
+  shelf.y = y;
+  addEditorLog(`${shelf.id}货架已从(${oldX},${oldY})移至(${x},${y})。`, "success");
+  editor.selectedShelfId = null;
+  updateEditorUI();
+  render();
+}
+
+function handleEditorTileClick(x, y) {
+  if (!editor.active) return;
+  const reserved = isReservedPosition(x, y);
+  if (reserved.blocked) {
+    addEditorLog(`${reserved.reason}位置不可放置货架。`, "error");
+    return;
+  }
+  const clickedShelf = findShelfAt(x, y);
+  if (clickedShelf) {
+    selectShelf(clickedShelf.id);
+  } else if (editor.selectedShelfId) {
+    tryMoveSelectedShelfTo(x, y);
+  }
+}
+
+function changeSelectedShelfGood(goodKey) {
+  if (!editor.active || !editor.selectedShelfId) return;
+  const shelf = findShelfById(editor.selectedShelfId);
+  if (!shelf) return;
+  if (shelf.good === goodKey) return;
+  const oldGood = goods[shelf.good];
+  const newGood = goods[goodKey];
+  shelf.good = goodKey;
+  addEditorLog(`${shelf.id}货架商品已从${oldGood.name}切换为${newGood.name}。`, "success");
+  updateEditorUI();
+  render();
+}
+
+function saveLayoutAndExit() {
+  if (!editor.active) return;
+  const changed = state.shelves.some((s, i) => {
+    const o = editor.originalShelves[i];
+    return s.x !== o.x || s.y !== o.y || s.good !== o.good;
+  });
+  if (changed) {
+    addEditorLog("✅ 布局已保存，将用于本局游戏！", "success");
+    addLog("🛠️ 货架布局已调整并保存。");
+  } else {
+    addEditorLog("布局未修改，保持原状。", "info");
+  }
+  exitEditMode(false);
+}
+
+function cancelEdit() {
+  if (!editor.active) return;
+  exitEditMode(true);
+}
+
+function updateEditorUI() {
+  if (!editorBanner || !editorPanel || !normalControls) return;
+  if (editor.active) {
+    editorBanner.classList.remove("hidden");
+    editorPanel.classList.remove("hidden");
+    normalControls.classList.add("hidden");
+    boardEl.classList.add("editor-mode");
+  } else {
+    editorBanner.classList.add("hidden");
+    editorPanel.classList.add("hidden");
+    normalControls.classList.remove("hidden");
+    boardEl.classList.remove("editor-mode");
+  }
+  renderEditorSelectedInfo();
+  renderEditorGoodPicker();
+  renderEditorLog();
+}
+
+function renderEditorSelectedInfo() {
+  if (!editorSelectedInfo) return;
+  if (!editor.selectedShelfId) {
+    editorSelectedInfo.innerHTML = `<p class="editor-info-empty">未选中货架<br><span style="font-size:11px;color:#6b7a6e;">点击地图上的货架开始编辑</span></p>`;
+    return;
+  }
+  const shelf = findShelfById(editor.selectedShelfId);
+  if (!shelf) {
+    editorSelectedInfo.innerHTML = `<p class="editor-info-empty">未选中货架</p>`;
+    return;
+  }
+  const good = goods[shelf.good];
+  editorSelectedInfo.innerHTML = `
+    <div class="editor-shelf-detail">
+      <div class="editor-shelf-icon">${good.icon}</div>
+      <div class="editor-shelf-meta">
+        <span class="editor-shelf-id">${shelf.id} 货架</span>
+        <span class="editor-shelf-pos">位置: (${shelf.x}, ${shelf.y})</span>
+        <span class="editor-shelf-good">商品: ${good.name} ¥${good.price}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderEditorGoodPicker() {
+  if (!editorGoodPicker || !editorGoodButtons) return;
+  if (!editor.selectedShelfId) {
+    editorGoodPicker.classList.add("hidden");
+    return;
+  }
+  const shelf = findShelfById(editor.selectedShelfId);
+  if (!shelf) {
+    editorGoodPicker.classList.add("hidden");
+    return;
+  }
+  editorGoodPicker.classList.remove("hidden");
+  const goodKeys = getCurrentLevelGoodKeys();
+  editorGoodButtons.innerHTML = "";
+  goodKeys.forEach(key => {
+    const good = goods[key];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `editor-good-btn ${shelf.good === key ? "active" : ""}`;
+    btn.innerHTML = `
+      <span class="editor-good-btn-icon">${good.icon}</span>
+      <span class="editor-good-btn-name">${good.name}</span>
+    `;
+    btn.addEventListener("click", () => changeSelectedShelfGood(key));
+    editorGoodButtons.appendChild(btn);
+  });
+}
+
+function bindEditorControls() {
+  if (editLayoutBtn) {
+    editLayoutBtn.addEventListener("click", () => {
+      if (state.running) {
+        addLog("游戏进行中无法编辑布局，请先结束或重新开始。");
+        return;
+      }
+      enterEditMode();
+    });
+  }
+  if (saveLayoutBtn) {
+    saveLayoutBtn.addEventListener("click", saveLayoutAndExit);
+  }
+  if (cancelEditBtn) {
+    cancelEditBtn.addEventListener("click", cancelEdit);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (editor.active && e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    }
+  });
+}
 
 const tutorial = {
   active: false,
@@ -841,9 +1121,16 @@ function openLevelSelect() {
     `;
     card.addEventListener("click", () => {
       currentLevelId = level.id;
+      if (editor.active) {
+        editor.active = false;
+        editor.selectedShelfId = null;
+        editor.originalShelves = [];
+        editor.logs = [];
+      }
       state = freshState();
       resultEl.classList.add("hidden");
       addLog(`已选择关卡：${level.icon} ${level.name}。点击「开始营业」开始游戏。`);
+      updateEditorUI();
       renderCrates();
       render();
       renderLevelName();
@@ -875,6 +1162,8 @@ function init() {
   bindCodexControls();
   bindLevelSelectControls();
   bindClerkControls();
+  bindEditorControls();
+  updateEditorUI();
   render();
   renderLevelName();
   renderClerkBadge();
@@ -1228,6 +1517,13 @@ function resetGame() {
     tutorial.waitingForAction = false;
     tutorialOverlay.classList.add("hidden");
   }
+  if (editor.active) {
+    editor.active = false;
+    editor.selectedShelfId = null;
+    editor.originalShelves = [];
+    editor.logs = [];
+  }
+  updateEditorUI();
   renderCrates();
   renderLevelName();
   render();
@@ -1623,28 +1919,46 @@ function renderBoard() {
       tile.className = "tile";
       const label = document.createElement("span");
       label.className = "label";
+      let isEmpty = true;
       if (x === level.warehousePos.x && y === level.warehousePos.y) {
         tile.classList.add("warehouse");
         label.textContent = "仓库";
+        isEmpty = false;
       } else if (x === level.checkoutPos.x && y === level.checkoutPos.y) {
         tile.classList.add("checkout");
         label.textContent = "收银";
+        isEmpty = false;
       } else {
         const shelf = shelfAt(x, y);
         if (shelf) {
           tile.classList.add("shelf");
+          isEmpty = false;
           const shelfRatio = Math.round((shelf.stock / shelf.max) * 100);
           const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
           if (shelfRatio <= lowThreshold) tile.classList.add("shelf-low");
-          label.textContent = `${shelf.id} ${goods[shelf.good].name} ${shelf.stock}/${shelf.max}`;
+          if (editor.active && editor.selectedShelfId === shelf.id) {
+            tile.classList.add("editor-selected");
+          }
+          if (editor.active) {
+            label.textContent = `${shelf.id} ${goods[shelf.good].icon}${goods[shelf.good].name}`;
+          } else {
+            label.textContent = `${shelf.id} ${goods[shelf.good].name} ${shelf.stock}/${shelf.max}`;
+          }
         }
+      }
+      if (isEmpty && editor.active) {
+        tile.classList.add("empty-tile");
       }
       if (state.player.x === x && state.player.y === y) {
         tile.classList.add("player");
       }
 
+      if (editor.active) {
+        tile.addEventListener("click", () => handleEditorTileClick(x, y));
+      }
+
       const key = `${x},${y}`;
-      if (tileCustomers[key]) {
+      if (tileCustomers[key] && !editor.active) {
         tileCustomers[key].forEach((customer, idx) => {
           const customerEl = document.createElement("div");
           const remaining = customer.maxWait - customer.waited;
