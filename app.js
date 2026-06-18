@@ -160,9 +160,333 @@ const saveLayoutBtn = document.getElementById("saveLayoutBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 const normalControls = document.getElementById("normalControls");
 
+const eventBanner = document.getElementById("eventBanner");
+const eventBannerIcon = document.getElementById("eventBannerIcon");
+const eventBannerTitle = document.getElementById("eventBannerTitle");
+const eventBannerDesc = document.getElementById("eventBannerDesc");
+const activeEventsEl = document.getElementById("activeEvents");
+const appShellEl = document.querySelector(".app-shell");
+
 const codexState = {
   selectedGood: null
 };
+
+const eventTemplates = {
+  hotDrinkSurge: {
+    id: "hotDrinkSurge",
+    name: "热饮需求暴涨",
+    type: "demand",
+    icon: "☕",
+    startTitle: "☕ 热饮需求暴涨！",
+    startDesc: "深夜寒风来袭，顾客对热饮的需求大幅增加！",
+    endTitle: "✅ 热饮热潮消退",
+    endDesc: "天气回暖，顾客对热饮的需求恢复正常。",
+    minDuration: 4,
+    maxDuration: 7,
+    effect: { goodKey: "drink", demandMultiplier: 2.5 },
+    log: {
+      start: "☕ 突发：深夜寒风袭来，顾客对热饮的需求暴涨！进店顾客购买热饮的概率大幅提高。",
+      end: "✅ 热饮热潮消退，顾客偏好恢复正常。"
+    }
+  },
+  noodleShelfBroken: {
+    id: "noodleShelfBroken",
+    name: "泡面货架故障",
+    type: "shelf",
+    icon: "🍜",
+    startTitle: "🍜 泡面货架故障！",
+    startDesc: "泡面货架突然出了问题，暂时无法取货和补货！",
+    endTitle: "✅ 泡面货架修复",
+    endDesc: "经过临时抢修，泡面货架恢复正常使用。",
+    minDuration: 3,
+    maxDuration: 5,
+    effect: { targetGood: "noodle", blockShelf: true },
+    log: {
+      start: "🍜 突发：泡面货架电路故障，无法售卖也无法补货！请优先补货其他货架。",
+      end: "✅ 泡面货架已临时修复，恢复正常售卖和补货。"
+    }
+  },
+  warehouseShortage: {
+    id: "warehouseShortage",
+    name: "仓库短暂断货",
+    type: "warehouse",
+    icon: "📦",
+    startTitle: "📦 仓库短暂断货！",
+    startDesc: "物流延迟，仓库暂时无法取出任何货物！",
+    endTitle: "✅ 仓库到货",
+    endDesc: "补给车终于赶到，仓库恢复正常取货。",
+    minDuration: 3,
+    maxDuration: 5,
+    effect: { blockWarehouse: true },
+    log: {
+      start: "📦 突发：物流延迟导致仓库断货！暂时无法从仓库取货，请用现有库存应对。",
+      end: "✅ 补给车到货，仓库恢复正常，可以继续取货补货了！"
+    }
+  },
+  fatigueIncrease: {
+    id: "fatigueIncrease",
+    name: "体力消耗加剧",
+    type: "energy",
+    icon: "💤",
+    startTitle: "💤 疲惫袭来！",
+    startDesc: "深夜困倦来袭，所有行动的体力消耗翻倍！",
+    endTitle: "✅ 精神恢复",
+    endDesc: "一阵凉风吹过，你的精神稍微恢复了一些。",
+    minDuration: 4,
+    maxDuration: 6,
+    effect: { energyMultiplier: 2 },
+    log: {
+      start: "💤 突发：深夜困倦袭来，移动、拿货、补货的体力消耗全部翻倍！",
+      end: "✅ 一阵冷风让你清醒过来，体力消耗恢复正常。"
+    }
+  }
+};
+
+const EVENT_TRIGGER_CONFIG = {
+  minStartTick: 2,
+  minGapBetweenEvents: 4,
+  maxActiveEvents: 2,
+  baseTriggerChance: 0.22,
+  lateGameChanceBoost: 0.15
+};
+
+let eventBannerTimer = null;
+
+function getAvailableEventTemplates() {
+  const activeIds = (state.events.active || []).map(e => e.id);
+  return Object.values(eventTemplates).filter(t => !activeIds.includes(t.id));
+}
+
+function canTriggerEvent() {
+  const level = getCurrentLevel();
+  const totalTicks = Math.floor(level.duration / 5);
+  const currentTick = Math.floor(state.minute / 5);
+  const activeCount = (state.events.active || []).length;
+
+  if (currentTick < EVENT_TRIGGER_CONFIG.minStartTick) return false;
+  if (activeCount >= EVENT_TRIGGER_CONFIG.maxActiveEvents) return false;
+  if (state.events.lastTriggeredTick !== null &&
+      currentTick - state.events.lastTriggeredTick < EVENT_TRIGGER_CONFIG.minGapBetweenEvents) return false;
+  if (getAvailableEventTemplates().length === 0) return false;
+  if (currentTick >= totalTicks - 2) return false;
+  return true;
+}
+
+function calculateTriggerChance() {
+  const level = getCurrentLevel();
+  const totalTicks = Math.floor(level.duration / 5);
+  const currentTick = Math.floor(state.minute / 5);
+  const progress = currentTick / totalTicks;
+  let chance = EVENT_TRIGGER_CONFIG.baseTriggerChance;
+  if (progress > 0.5) chance += EVENT_TRIGGER_CONFIG.lateGameChanceBoost;
+  if (progress > 0.75) chance += EVENT_TRIGGER_CONFIG.lateGameChanceBoost * 0.5;
+  return chance;
+}
+
+function tryTriggerRandomEvent() {
+  if (!canTriggerEvent()) return;
+  const chance = calculateTriggerChance();
+  if (Math.random() > chance) return;
+
+  const available = getAvailableEventTemplates();
+  const template = available[Math.floor(Math.random() * available.length)];
+  startEvent(template);
+}
+
+function startEvent(template) {
+  const duration = template.minDuration +
+    Math.floor(Math.random() * (template.maxDuration - template.minDuration + 1));
+  const currentTick = Math.floor(state.minute / 5);
+
+  const event = {
+    id: template.id,
+    templateId: template.id,
+    name: template.name,
+    type: template.type,
+    icon: template.icon,
+    startTick: currentTick,
+    endTick: currentTick + duration,
+    duration: duration,
+    effect: { ...template.effect }
+  };
+
+  state.events.active.push(event);
+  state.events.lastTriggeredTick = currentTick;
+  state.events.history.push({
+    id: template.id,
+    name: template.name,
+    startTick: currentTick,
+    ended: false
+  });
+
+  addLog(template.log.start);
+  showEventBanner(template.startTitle, template.startDesc, template.type, false, template.icon);
+  applyEventVisualEffects(template, true);
+}
+
+function checkEventExpirations() {
+  const currentTick = Math.floor(state.minute / 5);
+  const expired = [];
+  state.events.active = state.events.active.filter(event => {
+    if (currentTick >= event.endTick) {
+      expired.push(event);
+      return false;
+    }
+    return true;
+  });
+
+  expired.forEach(event => {
+    const template = eventTemplates[event.templateId];
+    if (template) {
+      addLog(template.log.end);
+      showEventBanner(template.endTitle, template.endDesc, template.type, true, template.icon);
+      applyEventVisualEffects(template, false);
+    }
+    const historyEntry = state.events.history.find(h => h.id === event.templateId && !h.ended);
+    if (historyEntry) {
+      historyEntry.ended = true;
+      historyEntry.endTick = currentTick;
+    }
+  });
+}
+
+function showEventBanner(title, desc, type, isEnd, icon) {
+  if (!eventBanner) return;
+  eventBanner.className = "event-banner";
+  eventBanner.classList.add(`event-type-${type}`);
+  if (isEnd) eventBanner.classList.add("event-end");
+  eventBannerIcon.textContent = isEnd ? "✅" : (icon || "⚡");
+  eventBannerTitle.textContent = title;
+  eventBannerDesc.textContent = desc;
+  eventBanner.classList.remove("hidden");
+
+  if (eventBannerTimer) clearTimeout(eventBannerTimer);
+  eventBannerTimer = setTimeout(() => {
+    eventBanner.classList.add("hidden");
+  }, 4000);
+}
+
+function applyEventVisualEffects(template, apply) {
+  if (!state || !state.shelves) return;
+  switch (template.id) {
+    case "noodleShelfBroken":
+      state.shelves.forEach(shelf => {
+        if (shelf.good === "noodle") {
+          shelf._broken = apply;
+        }
+      });
+      break;
+    case "warehouseShortage":
+      state.warehouseBlocked = apply;
+      break;
+    case "fatigueIncrease":
+      if (apply) {
+        document.body.classList.add("energy-high-drain");
+      } else {
+        document.body.classList.remove("energy-high-drain");
+      }
+      break;
+  }
+}
+
+function hasActiveEvent(eventId) {
+  if (!state || !state.events || !state.events.active) return false;
+  return state.events.active.some(e => e.id === eventId);
+}
+
+function getActiveEventsByType(type) {
+  if (!state || !state.events || !state.events.active) return [];
+  return state.events.active.filter(e => e.type === type);
+}
+
+function getGoodDemandMultiplier(goodKey) {
+  let multiplier = 1;
+  const demandEvents = getActiveEventsByType("demand");
+  demandEvents.forEach(event => {
+    if (event.effect.goodKey === goodKey) {
+      multiplier *= event.effect.demandMultiplier;
+    }
+  });
+  return multiplier;
+}
+
+function isShelfBlocked(shelf) {
+  if (!shelf) return false;
+  if (shelf._broken) return true;
+  const shelfEvents = getActiveEventsByType("shelf");
+  for (const event of shelfEvents) {
+    if (event.effect.blockShelf && shelf.good === event.effect.targetGood) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isWarehouseBlocked() {
+  if (state.warehouseBlocked) return true;
+  return getActiveEventsByType("warehouse").length > 0;
+}
+
+function getEnergyMultiplier() {
+  let multiplier = 1;
+  const energyEvents = getActiveEventsByType("energy");
+  energyEvents.forEach(event => {
+    multiplier *= event.effect.energyMultiplier;
+  });
+  return multiplier;
+}
+
+function renderActiveEvents() {
+  if (!activeEventsEl) return;
+  const active = state.events.active || [];
+  if (active.length === 0) {
+    activeEventsEl.classList.add("hidden");
+    return;
+  }
+  activeEventsEl.classList.remove("hidden");
+  activeEventsEl.innerHTML = "";
+  const currentTick = Math.floor(state.minute / 5);
+
+  active.forEach(event => {
+    const remaining = Math.max(0, event.endTick - currentTick);
+    const total = event.duration;
+    const elapsed = total - remaining;
+    const ratio = total > 0 ? Math.max(0, Math.min(100, ((total - elapsed) / total) * 100)) : 0;
+    const template = eventTemplates[event.templateId];
+
+    const card = document.createElement("div");
+    card.className = `active-event-card type-${event.type}`;
+    card.innerHTML = `
+      <span class="active-event-icon">${event.icon}</span>
+      <div class="active-event-info">
+        <div class="active-event-name">${event.name}</div>
+        <div class="active-event-remaining">
+          <span>剩余 ${remaining} 格</span>
+          <div class="active-event-bar"><span style="width:${ratio}%"></span></div>
+        </div>
+      </div>
+    `;
+    activeEventsEl.appendChild(card);
+  });
+}
+
+function resetAllEventEffects() {
+  if (state) {
+    state.warehouseBlocked = false;
+    if (state.shelves) {
+      state.shelves.forEach(shelf => {
+        shelf._broken = false;
+      });
+    }
+  }
+  document.body.classList.remove("energy-high-drain");
+  if (eventBannerTimer) {
+    clearTimeout(eventBannerTimer);
+    eventBannerTimer = null;
+  }
+  if (eventBanner) eventBanner.classList.add("hidden");
+  if (activeEventsEl) activeEventsEl.classList.add("hidden");
+}
 
 const goods = {
   snack: {
@@ -737,7 +1061,7 @@ function freshState() {
     player: { ...level.playerStart },
     carry: [],
     selected: getCurrentLevelGoodKeys()[0],
-    shelves: level.shelves.map((shelf) => ({ ...shelf })),
+    shelves: level.shelves.map((shelf) => ({ ...shelf, _broken: false })),
     log: ["卷帘门半开，夜班还没开始。"],
     salesCount: {
       snack: salesCount.snack || 0,
@@ -756,7 +1080,13 @@ function freshState() {
       nextId: 1,
       servedCount: 0,
       missedCount: 0
-    }
+    },
+    events: {
+      active: [],
+      history: [],
+      lastTriggeredTick: null
+    },
+    warehouseBlocked: false
   };
 }
 
@@ -1512,6 +1842,7 @@ function startGame() {
 function resetGame() {
   clearInterval(timer);
   timer = null;
+  resetAllEventEffects();
   state = freshState();
   resultEl.classList.add("hidden");
   if (tutorial.active) {
@@ -1534,6 +1865,8 @@ function resetGame() {
 function tick() {
   if (!state.running) return;
   state.minute += 5;
+  checkEventExpirations();
+  tryTriggerRandomEvent();
   processCustomerQueue();
   updateGoalProgress();
   if (state.minute >= getCurrentLevel().duration) {
@@ -1545,7 +1878,17 @@ function tick() {
 function generateIncomingCustomer() {
   const level = getCurrentLevel();
   const goodKeys = getCurrentLevelGoodKeys();
-  const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
+
+  const weightedKeys = [];
+  goodKeys.forEach(key => {
+    const multiplier = getGoodDemandMultiplier(key);
+    const weight = Math.round(multiplier * 10);
+    for (let i = 0; i < weight; i++) {
+      weightedKeys.push(key);
+    }
+  });
+  const goodKey = weightedKeys[Math.floor(Math.random() * weightedKeys.length)];
+
   const lastArrival = state.customers.incoming.length > 0
     ? state.customers.incoming[state.customers.incoming.length - 1].arrivalTick
     : Math.floor(state.minute / 5);
@@ -1613,7 +1956,7 @@ function processCustomerQueue() {
 }
 
 function pickBestShelfForGood(goodKey) {
-  const compatibleShelves = state.shelves.filter(s => s.good === goodKey);
+  const compatibleShelves = state.shelves.filter(s => s.good === goodKey && !isShelfBlocked(s));
   if (compatibleShelves.length === 0) return null;
   const withStock = compatibleShelves.filter(s => s.stock > 0);
   if (withStock.length > 0) {
@@ -1628,6 +1971,17 @@ function tryServeCustomer(customer) {
     : pickBestShelfForGood(customer.goodKey);
 
   if (!shelf) {
+    return 'waiting';
+  }
+
+  if (isShelfBlocked(shelf)) {
+    const altShelf = pickBestShelfForGood(customer.goodKey);
+    if (altShelf && altShelf.id !== shelf.id) {
+      customer.targetShelfId = altShelf.id;
+      customer.displayX = altShelf.x;
+      customer.displayY = altShelf.y;
+      return tryServeCustomer(customer);
+    }
     return 'waiting';
   }
 
@@ -1708,7 +2062,9 @@ function interact() {
   const level = getCurrentLevel();
   const shelf = shelfAt(state.player.x, state.player.y);
   if (state.player.x === level.warehousePos.x && state.player.y === level.warehousePos.y) {
-    if (state.carry.length >= maxCarryCount()) {
+    if (isWarehouseBlocked()) {
+      addLog("📦 仓库暂时断货，无法取货！请等待仓库恢复。");
+    } else if (state.carry.length >= maxCarryCount()) {
       addLog("手上已经拿满了。");
     } else if (state.carry.includes(state.selected)) {
       addLog("已经拿了一箱这种货。");
@@ -1718,7 +2074,9 @@ function interact() {
       addLog(`从仓库拿起一箱${goods[state.selected].name}。`);
     }
   } else if (shelf) {
-    if (state.carry.length === 0) {
+    if (isShelfBlocked(shelf)) {
+      addLog(`⚠️ ${shelf.id}${goods[shelf.good].name}货架故障，暂时无法补货和取货！`);
+    } else if (state.carry.length === 0) {
       addLog("手上没有货箱。");
     } else {
       const carryIndex = state.carry.indexOf(shelf.good);
@@ -1742,7 +2100,9 @@ function interact() {
 }
 
 function spendEnergy(amount) {
-  state.energy = Math.max(0, state.energy - amount);
+  const multiplier = getEnergyMultiplier();
+  const actualAmount = Math.ceil(amount * multiplier);
+  state.energy = Math.max(0, state.energy - actualAmount);
   updateGoalProgress();
   if (state.energy === 0) {
     finish("体力耗尽，夜班提前结束。");
@@ -1859,11 +2219,33 @@ function finish(reason) {
     </div>
   `;
 
+  const eventHistory = state.events.history || [];
+  const eventsHtml = eventHistory.length > 0 ? `
+    <div class="result-goals">
+      <h3>⚡ 经营事件记录</h3>
+      <div class="result-goal-list">
+        ${eventHistory.map(h => {
+          const template = eventTemplates[h.id];
+          const icon = template ? template.icon : '⚡';
+          const duration = h.ended && h.endTick ? `（持续 ${h.endTick - h.startTick} 格）` : '（未结束）';
+          return `
+          <div class="result-goal-item" style="background:#f5efe0;">
+            <span>${icon} ${h.name}</span>
+            <span class="reward-tag">第 ${h.startTick} 格触发 ${duration}</span>
+          </div>
+        `}).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  resetAllEventEffects();
+
   resultEl.innerHTML = `
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
     ${statsHtml}
     ${goalsHtml}
+    ${eventsHtml}
     ${expHtml}
     <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
   `;
@@ -1891,6 +2273,7 @@ function render() {
   renderLog();
   renderClerkBadge();
   renderCrates();
+  renderActiveEvents();
 
   if (tutorial.active && tutorial.waitingForAction) {
     setTimeout(() => {
@@ -1924,6 +2307,9 @@ function renderBoard() {
       let isEmpty = true;
       if (x === level.warehousePos.x && y === level.warehousePos.y) {
         tile.classList.add("warehouse");
+        if (isWarehouseBlocked()) {
+          tile.classList.add("warehouse-blocked");
+        }
         label.textContent = "仓库";
         isEmpty = false;
       } else if (x === level.checkoutPos.x && y === level.checkoutPos.y) {
@@ -1938,6 +2324,7 @@ function renderBoard() {
           const shelfRatio = Math.round((shelf.stock / shelf.max) * 100);
           const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
           if (shelfRatio <= lowThreshold) tile.classList.add("shelf-low");
+          if (isShelfBlocked(shelf)) tile.classList.add("shelf-broken");
           if (editor.active && editor.selectedShelfId === shelf.id) {
             tile.classList.add("editor-selected");
           }
@@ -2061,7 +2448,16 @@ function renderShelves() {
     card.className = "shelf-card";
     const ratio = Math.round((shelf.stock / shelf.max) * 100);
     const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
-    card.innerHTML = `<strong>${shelf.id} ${goods[shelf.good].name}</strong><span>${shelf.stock}/${shelf.max}</span><div class="meter ${ratio <= lowThreshold ? "low" : ""}"><span style="width:${ratio}%"></span></div>`;
+    const blocked = isShelfBlocked(shelf);
+    const nameText = blocked
+      ? `${shelf.id} ${goods[shelf.good].name} ⚠️故障`
+      : `${shelf.id} ${goods[shelf.good].name}`;
+    const stockText = blocked ? `无法使用` : `${shelf.stock}/${shelf.max}`;
+    if (blocked) {
+      card.style.borderColor = "#d45f4c";
+      card.style.background = "#2a1e1e";
+    }
+    card.innerHTML = `<strong>${nameText}</strong><span>${stockText}</span><div class="meter ${ratio <= lowThreshold || blocked ? "low" : ""}"><span style="width:${blocked ? 0 : ratio}%"></span></div>`;
     shelfListEl.appendChild(card);
   });
 }
