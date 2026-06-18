@@ -122,7 +122,7 @@ const goalTemplates = [
       };
     },
     getProgress: (state, goal) => {
-      const count = state.salesCount[goal.goodKey] || 0;
+      const count = state.sessionSalesCount[goal.goodKey] || 0;
       return Math.min(count * goods[goal.goodKey].price, goal.target);
     }
   },
@@ -144,7 +144,7 @@ const goalTemplates = [
         unit: "份"
       };
     },
-    getProgress: (state, goal) => Math.min(state.salesCount[goal.goodKey] || 0, goal.target)
+    getProgress: (state, goal) => Math.min(state.sessionSalesCount[goal.goodKey] || 0, goal.target)
   },
   {
     type: "max_misses",
@@ -299,6 +299,11 @@ function freshState() {
       snack: salesCount.snack || 0,
       drink: salesCount.drink || 0,
       noodle: salesCount.noodle || 0
+    },
+    sessionSalesCount: {
+      snack: 0,
+      drink: 0,
+      noodle: 0
     },
     goals: []
   };
