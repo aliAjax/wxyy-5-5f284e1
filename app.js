@@ -252,23 +252,29 @@ const EVENT_TRIGGER_CONFIG = {
 
 let eventBannerTimer = null;
 
-function getAvailableEventTemplates() {
-  const activeIds = (state.events.active || []).map(e => e.id);
-  return Object.values(eventTemplates).filter(t => !activeIds.includes(t.id));
-}
-
-function canTriggerEvent() {
+function getRemainingEventTicks() {
   const level = getCurrentLevel();
   const totalTicks = Math.floor(level.duration / 5);
   const currentTick = Math.floor(state.minute / 5);
+  return Math.max(0, totalTicks - currentTick);
+}
+
+function getAvailableEventTemplates(maxDuration = Infinity) {
+  const activeIds = (state.events.active || []).map(e => e.id);
+  return Object.values(eventTemplates).filter(t => !activeIds.includes(t.id) && t.minDuration <= maxDuration);
+}
+
+function canTriggerEvent() {
+  const currentTick = Math.floor(state.minute / 5);
   const activeCount = (state.events.active || []).length;
+  const remainingTicks = getRemainingEventTicks();
 
   if (currentTick < EVENT_TRIGGER_CONFIG.minStartTick) return false;
   if (activeCount >= EVENT_TRIGGER_CONFIG.maxActiveEvents) return false;
   if (state.events.lastTriggeredTick !== null &&
       currentTick - state.events.lastTriggeredTick < EVENT_TRIGGER_CONFIG.minGapBetweenEvents) return false;
-  if (getAvailableEventTemplates().length === 0) return false;
-  if (currentTick >= totalTicks - 2) return false;
+  if (remainingTicks < 3) return false;
+  if (getAvailableEventTemplates(remainingTicks).length === 0) return false;
   return true;
 }
 
@@ -288,14 +294,16 @@ function tryTriggerRandomEvent() {
   const chance = calculateTriggerChance();
   if (Math.random() > chance) return;
 
-  const available = getAvailableEventTemplates();
+  const remainingTicks = getRemainingEventTicks();
+  const available = getAvailableEventTemplates(remainingTicks);
   const template = available[Math.floor(Math.random() * available.length)];
-  startEvent(template);
+  startEvent(template, remainingTicks);
 }
 
-function startEvent(template) {
+function startEvent(template, maxDuration = Infinity) {
+  const durationMax = Math.min(template.maxDuration, maxDuration);
   const duration = template.minDuration +
-    Math.floor(Math.random() * (template.maxDuration - template.minDuration + 1));
+    Math.floor(Math.random() * (durationMax - template.minDuration + 1));
   const currentTick = Math.floor(state.minute / 5);
 
   const event = {
@@ -348,6 +356,27 @@ function checkEventExpirations() {
       historyEntry.endTick = currentTick;
     }
   });
+}
+
+function endActiveEventsForClosing() {
+  const active = state.events.active || [];
+  if (active.length === 0) return;
+  const currentTick = Math.floor(state.minute / 5);
+
+  active.forEach(event => {
+    const template = eventTemplates[event.templateId];
+    if (template) {
+      addLog(template.log.end);
+      applyEventVisualEffects(template, false);
+    }
+    const historyEntry = state.events.history.find(h => h.id === event.templateId && !h.ended);
+    if (historyEntry) {
+      historyEntry.ended = true;
+      historyEntry.endTick = currentTick;
+    }
+  });
+
+  state.events.active = [];
 }
 
 function showEventBanner(title, desc, type, isEnd, icon) {
@@ -2138,6 +2167,7 @@ function finish(reason) {
 
   localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
 
+  endActiveEventsForClosing();
   evaluateEndGoals();
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
