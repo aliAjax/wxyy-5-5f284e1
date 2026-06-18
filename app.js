@@ -249,23 +249,12 @@ function renderCodexDetail(goodKey) {
   const nextUnlock = getNextUnlock(goodKey, count);
   const compatShelves = getCompatShelves(goodKey);
 
-  if (!unlocked) {
-    codexDetailEl.innerHTML = `
-      <div class="codex-detail-locked">
-        <div class="codex-detail-icon">❓</div>
-        <h3>???</h3>
-        <p class="codex-hint">还没卖过这件商品，卖出 1 件即可解锁图鉴资料。</p>
-      </div>
-    `;
-    return;
-  }
-
   codexDetailEl.innerHTML = `
     <div class="codex-detail-header">
-      <div class="codex-detail-icon">${good.icon}</div>
+      <div class="codex-detail-icon ${!unlocked ? 'locked' : ''}">${unlocked ? good.icon : '❓'}</div>
       <div>
-        <h3>${good.name}</h3>
-        <p class="codex-desc">${good.desc}</p>
+        <h3 class="${!unlocked ? 'locked-text' : ''}">${unlocked ? good.name : '???'}</h3>
+        ${unlocked ? `<p class="codex-desc">${good.desc}</p>` : `<p class="codex-hint">还没卖过这件商品，卖出 1 件即可解锁商品介绍。</p>`}
       </div>
     </div>
     <div class="codex-stats">
@@ -659,8 +648,16 @@ function customerVisit() {
   if (shelf.stock > 0) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
-    state.salesCount[shelf.good] = (state.salesCount[shelf.good] || 0) + 1;
+    const prevCount = state.salesCount[shelf.good] || 0;
+    state.salesCount[shelf.good] = prevCount + 1;
     addLog(`顾客买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
+
+    if (!codexOverlay.classList.contains("hidden")) {
+      renderCodexList();
+      if (codexState.selectedGood === shelf.good) {
+        renderCodexDetail(shelf.good);
+      }
+    }
   } else {
     state.misses += 1;
     addLog(`${shelf.id}货架缺${goods[shelf.good].name}，顾客空手离开。`);

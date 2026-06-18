@@ -584,24 +584,6 @@ h2 {
   font-size: 15px;
 }
 
-.codex-detail-locked {
-  text-align: center;
-  padding: 40px 20px;
-}
-
-.codex-detail-locked .codex-detail-icon {
-  font-size: 56px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
-.codex-detail-locked h3 {
-  color: #fff7cf;
-  margin: 0 0 8px;
-  font-size: 24px;
-  opacity: 0.5;
-}
-
 .codex-hint {
   color: #8fa192;
   margin: 0;
@@ -624,6 +606,14 @@ h2 {
   border-radius: 12px;
   flex-shrink: 0;
   border: 1px solid #45584b;
+}
+
+.codex-detail-icon.locked {
+  opacity: 0.6;
+}
+
+.locked-text {
+  opacity: 0.6;
 }
 
 .codex-detail-header h3 {
