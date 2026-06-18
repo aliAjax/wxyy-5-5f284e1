@@ -853,7 +853,8 @@ const replayPlayer = {
   timer: null,
   savedRealState: null,
   savedResultHtml: null,
-  savedResultVisible: false
+  savedResultVisible: false,
+  savedLevelId: null
 };
 
 function formatReplayTime(seconds) {
@@ -973,6 +974,8 @@ function replayEnterMode() {
     addLog("没有找到上一局回放录像。");
     return;
   }
+
+  replayPlayer.savedLevelId = currentLevelId;
   if (replayData.levelId) {
     currentLevelId = replayData.levelId;
   }
@@ -1038,6 +1041,20 @@ function replayExitMode() {
 
   if (replayPlayer.savedResultHtml) {
     resultEl.innerHTML = replayPlayer.savedResultHtml;
+    const resultReplayBtn = document.getElementById("resultReplayBtn");
+    if (resultReplayBtn) {
+      resultReplayBtn.addEventListener("click", () => {
+        if (replayHasSaved()) {
+          replayEnterMode();
+        }
+      });
+    }
+    const resultRestartBtn = document.getElementById("resultRestartBtn");
+    if (resultRestartBtn) {
+      resultRestartBtn.addEventListener("click", () => {
+        resetGame();
+      });
+    }
   }
   if (replayPlayer.savedResultVisible) {
     resultEl.classList.remove("hidden");
@@ -1045,10 +1062,15 @@ function replayExitMode() {
     resultEl.classList.add("hidden");
   }
 
+  if (replayPlayer.savedLevelId !== null) {
+    currentLevelId = replayPlayer.savedLevelId;
+  }
+
   replayPlayer.active = false;
   replayPlayer.data = null;
   replayPlayer.savedRealState = null;
   replayPlayer.savedResultHtml = null;
+  replayPlayer.savedLevelId = null;
 
   replayBanner.classList.add("hidden");
   boardEl.classList.remove("replay-mode");
