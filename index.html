@@ -41,6 +41,21 @@
       </aside>
 
       <section class="board-wrap">
+        <div id="replayBanner" class="replay-banner hidden">
+          <span class="replay-banner-icon">🎬</span>
+          <span class="replay-banner-title">夜班录像回放模式</span>
+          <div class="replay-controls">
+            <button id="replayPlayBtn" class="replay-ctrl-btn" type="button">▶ 播放</button>
+            <button id="replayPauseBtn" class="replay-ctrl-btn hidden" type="button">⏸ 暂停</button>
+            <button id="replaySpeedBtn" class="replay-ctrl-btn" type="button">⏩ 1x</button>
+            <button id="replayExitBtn" class="replay-ctrl-btn replay-exit" type="button">✕ 退出回放</button>
+          </div>
+          <div class="replay-progress-wrap">
+            <span id="replayTimeLabel" class="replay-time-label">00:00</span>
+            <input type="range" id="replaySlider" class="replay-slider" min="0" max="100" value="0">
+            <span id="replayTimeTotal" class="replay-time-label">00:00</span>
+          </div>
+        </div>
         <div id="editorBanner" class="editor-banner hidden">
           <span class="editor-banner-icon">🛠️</span>
           <span class="editor-banner-title">货架布局编辑模式</span>
@@ -104,6 +119,7 @@
           <button id="editLayoutBtn" class="secondary" type="button">🛠️ 编辑货架布局</button>
           <button id="restartBtn" class="secondary" type="button">重新开始</button>
           <button id="changeLevelBtn" class="secondary" type="button">🔄 切换关卡</button>
+          <button id="replayBtn" class="secondary" type="button">🎬 查看上局回放</button>
         </div>
       </aside>
     </section>

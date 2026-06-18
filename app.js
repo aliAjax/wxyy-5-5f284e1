@@ -160,6 +160,16 @@ const saveLayoutBtn = document.getElementById("saveLayoutBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 const normalControls = document.getElementById("normalControls");
 
+const replayBanner = document.getElementById("replayBanner");
+const replayPlayBtn = document.getElementById("replayPlayBtn");
+const replayPauseBtn = document.getElementById("replayPauseBtn");
+const replaySpeedBtn = document.getElementById("replaySpeedBtn");
+const replayExitBtn = document.getElementById("replayExitBtn");
+const replaySlider = document.getElementById("replaySlider");
+const replayTimeLabel = document.getElementById("replayTimeLabel");
+const replayTimeTotal = document.getElementById("replayTimeTotal");
+const replayBtn = document.getElementById("replayBtn");
+
 const eventBanner = document.getElementById("eventBanner");
 const eventBannerIcon = document.getElementById("eventBannerIcon");
 const eventBannerTitle = document.getElementById("eventBannerTitle");
@@ -330,6 +340,7 @@ function startEvent(template, maxDuration = Infinity) {
   addLog(template.log.start);
   showEventBanner(template.startTitle, template.startDesc, template.type, false, template.icon);
   applyEventVisualEffects(template, true);
+  replayRecordFrame('event_start');
 }
 
 function checkEventExpirations() {
@@ -356,6 +367,9 @@ function checkEventExpirations() {
       historyEntry.endTick = currentTick;
     }
   });
+  if (expired.length > 0) {
+    replayRecordFrame('event_end');
+  }
 }
 
 function endActiveEventsForClosing() {
@@ -742,6 +756,374 @@ const editor = {
   originalShelves: [],
   logs: []
 };
+
+const replayRecorder = {
+  recording: false,
+  frames: [],
+  levelId: null,
+  resultData: null
+};
+
+function deepCloneStateForReplay(s) {
+  return {
+    minute: s.minute,
+    energy: s.energy,
+    sales: s.sales,
+    misses: s.misses,
+    player: { x: s.player.x, y: s.player.y },
+    carry: [...s.carry],
+    shelves: s.shelves.map(sh => ({
+      id: sh.id, x: sh.x, y: sh.y, good: sh.good,
+      stock: sh.stock, max: sh.max, _broken: sh._broken
+    })),
+    log: [...s.log],
+    sessionSalesCount: { ...s.sessionSalesCount },
+    goals: s.goals.map(g => ({
+      ...g
+    })),
+    customers: {
+      incoming: s.customers.incoming.map(c => ({ ...c })),
+      waiting: s.customers.waiting.map(c => ({ ...c })),
+      nextId: s.customers.nextId,
+      servedCount: s.customers.servedCount,
+      missedCount: s.customers.missedCount
+    },
+    events: {
+      active: s.events.active.map(e => ({ ...e })),
+      history: s.events.history.map(h => ({ ...h })),
+      lastTriggeredTick: s.events.lastTriggeredTick
+    },
+    warehouseBlocked: s.warehouseBlocked,
+    running: s.running
+  };
+}
+
+function replayRecordFrame(frameType) {
+  if (!replayRecorder.recording) return;
+  const snapshot = deepCloneStateForReplay(state);
+  snapshot.frameType = frameType || 'tick';
+  snapshot.timestamp = Date.now();
+  replayRecorder.frames.push(snapshot);
+}
+
+function replayStartRecording() {
+  replayRecorder.recording = true;
+  replayRecorder.frames = [];
+  replayRecorder.levelId = currentLevelId;
+  replayRecorder.resultData = null;
+  replayRecordFrame('start');
+}
+
+function replayStopRecording(resultData) {
+  replayRecorder.recording = false;
+  replayRecorder.resultData = resultData || null;
+  const replayData = {
+    levelId: replayRecorder.levelId,
+    frames: replayRecorder.frames,
+    resultData: replayRecorder.resultData,
+    savedAt: Date.now()
+  };
+  try {
+    localStorage.setItem("lastNightReplay", JSON.stringify(replayData));
+  } catch (e) {
+    console.warn("回放数据过大，无法保存到 localStorage", e);
+  }
+}
+
+function replayHasSaved() {
+  return !!localStorage.getItem("lastNightReplay");
+}
+
+function replayLoadSaved() {
+  const raw = localStorage.getItem("lastNightReplay");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+const replayPlayer = {
+  active: false,
+  data: null,
+  currentFrameIndex: 0,
+  playing: false,
+  speed: 1,
+  timer: null,
+  savedRealState: null,
+  savedResultHtml: null,
+  savedResultVisible: false
+};
+
+function formatReplayTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function replayApplyFrame(index) {
+  if (!replayPlayer.data || !replayPlayer.data.frames) return;
+  const frame = replayPlayer.data.frames[index];
+  if (!frame) return;
+
+  replayPlayer.currentFrameIndex = index;
+
+  state.minute = frame.minute;
+  state.energy = frame.energy;
+  state.sales = frame.sales;
+  state.misses = frame.misses;
+  state.player = { x: frame.player.x, y: frame.player.y };
+  state.carry = [...frame.carry];
+  state.shelves = frame.shelves.map(sh => ({ ...sh }));
+  state.log = [...frame.log];
+  state.sessionSalesCount = { ...frame.sessionSalesCount };
+  state.goals = frame.goals.map(g => ({ ...g }));
+  state.customers = {
+    incoming: frame.customers.incoming.map(c => ({ ...c })),
+    waiting: frame.customers.waiting.map(c => ({ ...c })),
+    nextId: frame.customers.nextId,
+    servedCount: frame.customers.servedCount,
+    missedCount: frame.customers.missedCount
+  };
+  state.events = {
+    active: frame.events.active.map(e => ({ ...e })),
+    history: frame.events.history.map(h => ({ ...h })),
+    lastTriggeredTick: frame.events.lastTriggeredTick
+  };
+  state.warehouseBlocked = frame.warehouseBlocked;
+  state.running = frame.running;
+
+  resetAllEventEffects();
+  frame.events.active.forEach(event => {
+    const template = eventTemplates[event.templateId];
+    if (template) {
+      applyEventVisualEffects(template, true);
+    }
+  });
+
+  render();
+
+  const totalSeconds = replayPlayer.data.frames.length > 0
+    ? replayPlayer.data.frames[replayPlayer.data.frames.length - 1].minute
+    : 0;
+  replayTimeLabel.textContent = formatReplayTime(frame.minute);
+  replayTimeTotal.textContent = formatReplayTime(totalSeconds);
+  replaySlider.max = Math.max(0, replayPlayer.data.frames.length - 1);
+  replaySlider.value = index;
+}
+
+function replayNextFrame() {
+  if (!replayPlayer.playing) return;
+  const nextIdx = replayPlayer.currentFrameIndex + replayPlayer.speed;
+  if (nextIdx >= replayPlayer.data.frames.length - 1) {
+    replayApplyFrame(replayPlayer.data.frames.length - 1);
+    replayPausePlayback();
+    if (replayPlayer.data.resultData) {
+      resultEl.innerHTML = replayPlayer.data.resultData;
+      resultEl.classList.remove("hidden");
+    }
+    return;
+  }
+  replayApplyFrame(Math.min(nextIdx, replayPlayer.data.frames.length - 1));
+}
+
+function replayStartPlayback() {
+  if (!replayPlayer.data) return;
+  replayPlayer.playing = true;
+  replayPlayBtn.classList.add("hidden");
+  replayPauseBtn.classList.remove("hidden");
+  if (replayPlayer.timer) clearInterval(replayPlayer.timer);
+  const interval = Math.max(80, getCurrentLevel().tickInterval / replayPlayer.speed);
+  replayPlayer.timer = setInterval(replayNextFrame, interval);
+}
+
+function replayPausePlayback() {
+  replayPlayer.playing = false;
+  replayPlayBtn.classList.remove("hidden");
+  replayPauseBtn.classList.add("hidden");
+  if (replayPlayer.timer) {
+    clearInterval(replayPlayer.timer);
+    replayPlayer.timer = null;
+  }
+}
+
+function replayToggleSpeed() {
+  const speeds = [1, 2, 4];
+  const currentIdx = speeds.indexOf(replayPlayer.speed);
+  const nextIdx = (currentIdx + 1) % speeds.length;
+  replayPlayer.speed = speeds[nextIdx];
+  replaySpeedBtn.textContent = `⏩ ${replayPlayer.speed}x`;
+  if (replayPlayer.playing) {
+    replayPausePlayback();
+    replayStartPlayback();
+  }
+}
+
+function replaySeekTo(frameIndex) {
+  if (!replayPlayer.data) return;
+  const idx = Math.max(0, Math.min(frameIndex, replayPlayer.data.frames.length - 1));
+  replayApplyFrame(idx);
+  resultEl.classList.add("hidden");
+}
+
+function replayEnterMode() {
+  const replayData = replayLoadSaved();
+  if (!replayData) {
+    addLog("没有找到上一局回放录像。");
+    return;
+  }
+  if (replayData.levelId) {
+    currentLevelId = replayData.levelId;
+  }
+
+  replayPlayer.savedRealState = deepCloneStateForReplay(state);
+  replayPlayer.savedResultHtml = resultEl.innerHTML;
+  replayPlayer.savedResultVisible = !resultEl.classList.contains("hidden");
+
+  replayPlayer.active = true;
+  replayPlayer.data = replayData;
+  replayPlayer.currentFrameIndex = 0;
+  replayPlayer.playing = false;
+  replayPlayer.speed = 1;
+  replaySpeedBtn.textContent = "⏩ 1x";
+
+  replayBanner.classList.remove("hidden");
+  boardEl.classList.add("replay-mode");
+  resultEl.classList.add("hidden");
+  normalControls.classList.add("hidden");
+
+  replayApplyFrame(0);
+  addLog("🎬 进入回放模式，可播放、暂停、加速或拖动进度条。");
+}
+
+function replayExitMode() {
+  if (!replayPlayer.active) return;
+
+  replayPausePlayback();
+
+  if (replayPlayer.savedRealState) {
+    const saved = replayPlayer.savedRealState;
+    state.minute = saved.minute;
+    state.energy = saved.energy;
+    state.sales = saved.sales;
+    state.misses = saved.misses;
+    state.player = { x: saved.player.x, y: saved.player.y };
+    state.carry = [...saved.carry];
+    state.shelves = saved.shelves.map(sh => ({ ...sh }));
+    state.log = [...saved.log];
+    state.sessionSalesCount = { ...saved.sessionSalesCount };
+    state.goals = saved.goals.map(g => ({ ...g }));
+    state.customers = {
+      incoming: saved.customers.incoming.map(c => ({ ...c })),
+      waiting: saved.customers.waiting.map(c => ({ ...c })),
+      nextId: saved.customers.nextId,
+      servedCount: saved.customers.servedCount,
+      missedCount: saved.customers.missedCount
+    };
+    state.events = {
+      active: saved.events.active.map(e => ({ ...e })),
+      history: saved.events.history.map(h => ({ ...h })),
+      lastTriggeredTick: saved.events.lastTriggeredTick
+    };
+    state.warehouseBlocked = saved.warehouseBlocked;
+    state.running = saved.running;
+  }
+
+  resetAllEventEffects();
+  replayPlayer.savedRealState && replayPlayer.savedRealState.events.active.forEach(event => {
+    const template = eventTemplates[event.templateId];
+    if (template) applyEventVisualEffects(template, true);
+  });
+
+  if (replayPlayer.savedResultHtml) {
+    resultEl.innerHTML = replayPlayer.savedResultHtml;
+  }
+  if (replayPlayer.savedResultVisible) {
+    resultEl.classList.remove("hidden");
+  } else {
+    resultEl.classList.add("hidden");
+  }
+
+  replayPlayer.active = false;
+  replayPlayer.data = null;
+  replayPlayer.savedRealState = null;
+  replayPlayer.savedResultHtml = null;
+
+  replayBanner.classList.add("hidden");
+  boardEl.classList.remove("replay-mode");
+  normalControls.classList.remove("hidden");
+  updateEditorUI();
+  render();
+  addLog("已退出回放模式，回到当前状态。");
+}
+
+function bindReplayControls() {
+  if (replayPlayBtn) {
+    replayPlayBtn.addEventListener("click", () => {
+      if (replayPlayer.currentFrameIndex >= replayPlayer.data.frames.length - 1) {
+        replayApplyFrame(0);
+        resultEl.classList.add("hidden");
+      }
+      replayStartPlayback();
+    });
+  }
+  if (replayPauseBtn) {
+    replayPauseBtn.addEventListener("click", replayPausePlayback);
+  }
+  if (replaySpeedBtn) {
+    replaySpeedBtn.addEventListener("click", replayToggleSpeed);
+  }
+  if (replayExitBtn) {
+    replayExitBtn.addEventListener("click", replayExitMode);
+  }
+  if (replaySlider) {
+    let isDragging = false;
+    replaySlider.addEventListener("mousedown", () => { isDragging = true; replayPausePlayback(); });
+    replaySlider.addEventListener("touchstart", () => { isDragging = true; replayPausePlayback(); });
+    replaySlider.addEventListener("input", (e) => {
+      if (isDragging) {
+        replaySeekTo(parseInt(e.target.value, 10));
+      }
+    });
+    replaySlider.addEventListener("change", (e) => {
+      isDragging = false;
+      replaySeekTo(parseInt(e.target.value, 10));
+    });
+    replaySlider.addEventListener("mouseup", () => { isDragging = false; });
+    replaySlider.addEventListener("touchend", () => { isDragging = false; });
+  }
+  if (replayBtn) {
+    replayBtn.addEventListener("click", () => {
+      if (state.running) {
+        addLog("游戏进行中无法查看回放，请先结束或重新开始。");
+        return;
+      }
+      if (!replayHasSaved()) {
+        addLog("还没有可回放的录像，先完成一局夜班吧！");
+        return;
+      }
+      replayEnterMode();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!replayPlayer.active) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      replayExitMode();
+    } else if (e.key === " ") {
+      e.preventDefault();
+      if (replayPlayer.playing) replayPausePlayback();
+      else replayStartPlayback();
+    }
+  });
+}
+
+function updateReplayButtonState() {
+  if (replayBtn) {
+    replayBtn.disabled = !replayHasSaved();
+  }
+}
 
 function addEditorLog(text, type = "info") {
   editor.logs.push({ text, type, time: Date.now() });
@@ -1524,7 +1906,9 @@ function init() {
   bindLevelSelectControls();
   bindClerkControls();
   bindEditorControls();
+  bindReplayControls();
   updateEditorUI();
+  updateReplayButtonState();
   render();
   renderLevelName();
   renderClerkBadge();
@@ -1828,7 +2212,7 @@ function renderCrates() {
     const carrying = state.carry.includes(key);
     const full = state.carry.length >= maxCarryCount();
     button.textContent = carrying ? `${good.name} ✓` : `拿${good.name}`;
-    if (carrying || full) button.disabled = true;
+    if (carrying || full || replayPlayer.active) button.disabled = true;
     button.addEventListener("click", () => {
       state.selected = key;
       interact();
@@ -1862,6 +2246,7 @@ function startGame() {
     addLog(`  ${i + 1}. ${g.title}（奖励 +${g.reward}分）`);
   });
   updateGoalProgress();
+  replayStartRecording();
   if (!tutorial.active) {
     timer = setInterval(tick, level.tickInterval);
   }
@@ -1898,6 +2283,7 @@ function tick() {
   tryTriggerRandomEvent();
   processCustomerQueue();
   updateGoalProgress();
+  replayRecordFrame('tick');
   if (state.minute >= getCurrentLevel().duration) {
     finish("天快亮了，夜班结束。");
   }
@@ -2075,6 +2461,7 @@ function getPressureLevel() {
 }
 
 function move(dx, dy) {
+  if (replayPlayer.active) return;
   if (!state.running) return;
   const level = getCurrentLevel();
   const nextX = Math.max(0, Math.min(level.mapCols - 1, state.player.x + dx));
@@ -2083,10 +2470,12 @@ function move(dx, dy) {
   state.player.x = nextX;
   state.player.y = nextY;
   spendEnergy(hasAbility("moveSave") ? 0 : 1);
+  replayRecordFrame('move');
   render();
 }
 
 function interact() {
+  if (replayPlayer.active) return;
   if (!state.running) return;
   const level = getCurrentLevel();
   const shelf = shelfAt(state.player.x, state.player.y);
@@ -2125,6 +2514,7 @@ function interact() {
   } else {
     addLog("这里没有可处理的东西。");
   }
+  replayRecordFrame('interact');
   render();
 }
 
@@ -2270,7 +2660,7 @@ function finish(reason) {
 
   resetAllEventEffects();
 
-  resultEl.innerHTML = `
+  const resultHtml = `
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
     ${statsHtml}
@@ -2278,8 +2668,33 @@ function finish(reason) {
     ${eventsHtml}
     ${expHtml}
     <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
+    <div style="margin-top: 16px; display: flex; gap: 10px;">
+      <button id="resultReplayBtn" class="primary" type="button" style="margin: 0; flex: 1;">🎬 查看本局回放</button>
+      <button id="resultRestartBtn" class="secondary" type="button" style="margin: 0; flex: 1;">🔄 重新开始</button>
+    </div>
   `;
+  resultEl.innerHTML = resultHtml;
   resultEl.classList.remove("hidden");
+
+  replayRecordFrame('finish');
+  replayStopRecording(resultHtml);
+  updateReplayButtonState();
+
+  const resultReplayBtn = document.getElementById("resultReplayBtn");
+  if (resultReplayBtn) {
+    resultReplayBtn.addEventListener("click", () => {
+      if (replayHasSaved()) {
+        replayEnterMode();
+      }
+    });
+  }
+  const resultRestartBtn = document.getElementById("resultRestartBtn");
+  if (resultRestartBtn) {
+    resultRestartBtn.addEventListener("click", () => {
+      resetGame();
+    });
+  }
+
   addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。获得${expGained}经验。${leveledUp ? '🎉 升级到' + clerkLevels.find(cl => cl.level === newLevel).title + '！' : ''}`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
@@ -2293,9 +2708,17 @@ function render() {
   salesEl.textContent = state.sales;
   missesEl.textContent = state.misses;
   carryEl.textContent = state.carry.length > 0 ? state.carry.map(k => goods[k].name).join(" + ") : "空";
-  startBtn.disabled = state.running;
-  actionBtn.disabled = !state.running;
-  changeLevelBtn.disabled = state.running;
+  const replayActive = replayPlayer.active;
+  startBtn.disabled = state.running || replayActive;
+  actionBtn.disabled = !state.running || replayActive;
+  changeLevelBtn.disabled = state.running || replayActive;
+  restartBtn.disabled = replayActive;
+  editLayoutBtn.disabled = state.running || replayActive;
+  replayBtn.disabled = replayActive;
+  document.getElementById("upBtn").disabled = replayActive;
+  document.getElementById("downBtn").disabled = replayActive;
+  document.getElementById("leftBtn").disabled = replayActive;
+  document.getElementById("rightBtn").disabled = replayActive;
   renderBoard();
   renderShelves();
   renderGoals();
