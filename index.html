@@ -10,7 +10,7 @@
   <main class="app-shell">
     <section class="topbar">
       <div>
-        <p class="eyebrow">Night Shift Stocker</p>
+        <p class="eyebrow">Night Shift Stocker <span id="levelName" class="level-name"></span></p>
         <h1>深夜便利店补货</h1>
       </div>
       <div class="status-strip">
@@ -68,6 +68,7 @@
         <div id="log" class="log"></div>
         <button id="startBtn" class="primary" type="button">开始营业</button>
         <button id="restartBtn" class="secondary" type="button">重新开始</button>
+        <button id="changeLevelBtn" class="secondary" type="button">🔄 切换关卡</button>
       </aside>
     </section>
 
@@ -98,6 +99,16 @@
         <button id="choiceNo" class="secondary" type="button">跳过</button>
         <button id="choiceYes" class="primary" type="button">开始教学</button>
       </div>
+    </div>
+  </div>
+
+  <div id="levelSelectOverlay" class="level-select-overlay hidden">
+    <div class="level-select-dialog">
+      <div class="level-select-header">
+        <h2>🏪 选择关卡</h2>
+        <p>选择今晚要值班的便利店，不同店铺有不同的挑战。</p>
+      </div>
+      <div id="levelCards" class="level-cards"></div>
     </div>
   </div>
 

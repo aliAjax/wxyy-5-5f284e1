@@ -1,3 +1,96 @@
+const levels = [
+  {
+    id: 1,
+    name: "街角小店",
+    desc: "小型便利店，货架少、顾客温和，适合新手熟悉流程。",
+    icon: "🏪",
+    mapCols: 8,
+    mapRows: 6,
+    warehousePos: { x: 0, y: 5 },
+    checkoutPos: { x: 7, y: 0 },
+    playerStart: { x: 0, y: 5 },
+    shelves: [
+      { id: "A", x: 2, y: 1, good: "snack", stock: 3, max: 5 },
+      { id: "B", x: 5, y: 1, good: "drink", stock: 3, max: 5 },
+      { id: "C", x: 2, y: 4, good: "noodle", stock: 2, max: 4 },
+      { id: "D", x: 6, y: 4, good: "snack", stock: 2, max: 5 }
+    ],
+    goodKeys: ["snack", "drink", "noodle"],
+    duration: 120,
+    customerBaseGap: 3,
+    customerRandomRange: 2,
+    customerWaitMin: 3,
+    customerWaitMax: 6,
+    incomingPreview: 5,
+    maxWaiting: 8,
+    tickInterval: 1200
+  },
+  {
+    id: 2,
+    name: "社区超市",
+    desc: "中型超市，货架增多、节奏加快，考验多任务协调能力。",
+    icon: "🏬",
+    mapCols: 10,
+    mapRows: 7,
+    warehousePos: { x: 0, y: 6 },
+    checkoutPos: { x: 9, y: 0 },
+    playerStart: { x: 0, y: 6 },
+    shelves: [
+      { id: "A", x: 2, y: 1, good: "snack", stock: 3, max: 5 },
+      { id: "B", x: 5, y: 1, good: "drink", stock: 3, max: 5 },
+      { id: "C", x: 8, y: 1, good: "noodle", stock: 2, max: 4 },
+      { id: "D", x: 2, y: 4, good: "drink", stock: 2, max: 5 },
+      { id: "E", x: 5, y: 4, good: "snack", stock: 2, max: 5 },
+      { id: "F", x: 8, y: 5, good: "noodle", stock: 2, max: 4 }
+    ],
+    goodKeys: ["snack", "drink", "noodle"],
+    duration: 150,
+    customerBaseGap: 2,
+    customerRandomRange: 2,
+    customerWaitMin: 3,
+    customerWaitMax: 5,
+    incomingPreview: 6,
+    maxWaiting: 10,
+    tickInterval: 1100
+  },
+  {
+    id: 3,
+    name: "深夜大卖场",
+    desc: "大型卖场，货架密集、顾客络绎不绝，只有高效补货才能撑到天亮。",
+    icon: "🏙️",
+    mapCols: 12,
+    mapRows: 8,
+    warehousePos: { x: 0, y: 7 },
+    checkoutPos: { x: 11, y: 0 },
+    playerStart: { x: 0, y: 7 },
+    shelves: [
+      { id: "A", x: 2, y: 1, good: "snack", stock: 3, max: 6 },
+      { id: "B", x: 5, y: 1, good: "drink", stock: 3, max: 6 },
+      { id: "C", x: 8, y: 1, good: "noodle", stock: 3, max: 5 },
+      { id: "D", x: 2, y: 4, good: "drink", stock: 2, max: 6 },
+      { id: "E", x: 5, y: 4, good: "snack", stock: 2, max: 6 },
+      { id: "F", x: 8, y: 4, good: "noodle", stock: 2, max: 5 },
+      { id: "G", x: 3, y: 6, good: "snack", stock: 2, max: 5 },
+      { id: "H", x: 7, y: 6, good: "drink", stock: 2, max: 5 }
+    ],
+    goodKeys: ["snack", "drink", "noodle"],
+    duration: 180,
+    customerBaseGap: 1,
+    customerRandomRange: 2,
+    customerWaitMin: 2,
+    customerWaitMax: 5,
+    incomingPreview: 7,
+    maxWaiting: 12,
+    tickInterval: 1000
+  }
+];
+
+let currentLevelId = 1;
+
+function getCurrentLevel() {
+  return levels.find(l => l.id === currentLevelId) || levels[0];
+}
+
 const boardEl = document.getElementById("board");
 const crateButtonsEl = document.getElementById("crateButtons");
 const shelfListEl = document.getElementById("shelfList");
@@ -10,6 +103,7 @@ const missesEl = document.getElementById("misses");
 const carryEl = document.getElementById("carry");
 const startBtn = document.getElementById("startBtn");
 const restartBtn = document.getElementById("restartBtn");
+const changeLevelBtn = document.getElementById("changeLevelBtn");
 const actionBtn = document.getElementById("actionBtn");
 const waitingCountEl = document.getElementById("waitingCount");
 const pressureLevelEl = document.getElementById("pressureLevel");
@@ -35,6 +129,9 @@ const codexCloseBtn = document.getElementById("codexCloseBtn");
 const codexListEl = document.getElementById("codexList");
 const codexDetailEl = document.getElementById("codexDetail");
 const goalsListEl = document.getElementById("goalsList");
+const levelSelectOverlay = document.getElementById("levelSelectOverlay");
+const levelCardsEl = document.getElementById("levelCards");
+const levelNameEl = document.getElementById("levelName");
 
 const codexState = {
   selectedGood: null
@@ -82,12 +179,10 @@ const goods = {
   }
 };
 
-const baseShelves = [
-  { id: "A", x: 2, y: 1, good: "snack", stock: 3, max: 5 },
-  { id: "B", x: 5, y: 1, good: "drink", stock: 3, max: 5 },
-  { id: "C", x: 2, y: 4, good: "noodle", stock: 2, max: 4 },
-  { id: "D", x: 6, y: 4, good: "snack", stock: 2, max: 5 }
-];
+const CUSTOMER_WAIT_MIN = 3;
+const CUSTOMER_WAIT_MAX = 6;
+const INCOMING_PREVIEW = 5;
+const MAX_WAITING_CUSTOMERS = 8;
 
 const goalTemplates = [
   {
@@ -188,7 +283,8 @@ const goalTemplates = [
     type: "shelf_stock",
     name: "货架库存保持",
     generate: () => {
-      const shelf = baseShelves[Math.floor(Math.random() * baseShelves.length)];
+      const levelShelves = getCurrentLevel().shelves;
+      const shelf = levelShelves[Math.floor(Math.random() * levelShelves.length)];
       const good = goods[shelf.good];
       const targets = [1, 2];
       const target = targets[Math.floor(Math.random() * targets.length)];
@@ -278,31 +374,27 @@ const tutorialSteps = [
     onStart: () => {
       state.minute = 115;
       if (!timer) {
-        timer = setInterval(tick, 1200);
+        timer = setInterval(tick, getCurrentLevel().tickInterval);
       }
       render();
     }
   }
 ];
 
-const CUSTOMER_WAIT_MIN = 3;
-const CUSTOMER_WAIT_MAX = 6;
-const INCOMING_PREVIEW = 5;
-const MAX_WAITING_CUSTOMERS = 8;
-
 function freshState() {
   const savedSalesCount = localStorage.getItem("codexSalesCount");
   const salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
+  const level = getCurrentLevel();
   return {
     running: false,
     minute: 0,
     energy: 100,
     sales: 0,
     misses: 0,
-    player: { x: 0, y: 5 },
+    player: { ...level.playerStart },
     carry: null,
     selected: "snack",
-    shelves: baseShelves.map((shelf) => ({ ...shelf })),
+    shelves: level.shelves.map((shelf) => ({ ...shelf })),
     log: ["卷帘门半开，夜班还没开始。"],
     salesCount: {
       snack: salesCount.snack || 0,
@@ -410,7 +502,7 @@ function calcGoalsBonus() {
 }
 
 function getCompatShelves(goodKey) {
-  return baseShelves
+  return getCurrentLevel().shelves
     .filter((s) => s.good === goodKey)
     .map((s) => s.id)
     .join("、");
@@ -530,13 +622,75 @@ function bindCodexControls() {
   });
 }
 
+function renderLevelName() {
+  const level = getCurrentLevel();
+  if (levelNameEl) {
+    levelNameEl.textContent = `${level.icon} ${level.name}`;
+  }
+}
+
+function openLevelSelect() {
+  levelCardsEl.innerHTML = "";
+  levels.forEach(level => {
+    const card = document.createElement("div");
+    card.className = `level-card ${level.id === currentLevelId ? "current" : ""}`;
+    const shelfSummary = level.shelves.map(s => `${s.id}:${goods[s.good].name}`).join("、");
+    const durationMin = Math.floor(level.duration / 60);
+    const durationSec = level.duration % 60;
+    const durationText = durationSec > 0 ? `${durationMin}分${durationSec}秒` : `${durationMin}分钟`;
+    card.innerHTML = `
+      <div class="level-card-header">
+        <span class="level-icon">${level.icon}</span>
+        <div class="level-card-title">
+          <strong>${level.name}</strong>
+          <span class="level-size">${level.mapCols}×${level.mapRows} 地图</span>
+        </div>
+      </div>
+      <p class="level-desc">${level.desc}</p>
+      <div class="level-meta">
+        <span>🕐 ${durationText}</span>
+        <span>📦 ${level.shelves.length} 货架</span>
+        <span>👥 容纳${level.maxWaiting}人</span>
+      </div>
+      <div class="level-shelves">${shelfSummary}</div>
+    `;
+    card.addEventListener("click", () => {
+      currentLevelId = level.id;
+      state = freshState();
+      resultEl.classList.add("hidden");
+      addLog(`已选择关卡：${level.icon} ${level.name}。点击「开始营业」开始游戏。`);
+      renderCrates();
+      render();
+      renderLevelName();
+      levelSelectOverlay.classList.add("hidden");
+    });
+    levelCardsEl.appendChild(card);
+  });
+  levelSelectOverlay.classList.remove("hidden");
+}
+
+function bindLevelSelectControls() {
+  levelSelectOverlay.addEventListener("click", (e) => {
+    if (e.target === levelSelectOverlay) {
+      levelSelectOverlay.classList.add("hidden");
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !levelSelectOverlay.classList.contains("hidden")) {
+      levelSelectOverlay.classList.add("hidden");
+    }
+  });
+}
+
 function init() {
   state = freshState();
   renderCrates();
   bindControls();
   bindTutorialControls();
   bindCodexControls();
+  bindLevelSelectControls();
   render();
+  renderLevelName();
   tutorialTotalEl.textContent = tutorialSteps.length;
 
   window.addEventListener("resize", () => {
@@ -563,8 +717,15 @@ function bindControls() {
       startGame();
     }
   });
+  changeLevelBtn.addEventListener("click", () => {
+    if (state.running) {
+      addLog("游戏进行中无法切换关卡，请先结束或重新开始。");
+      return;
+    }
+    openLevelSelect();
+  });
   restartBtn.addEventListener("click", () => {
-    showTutorialChoice(false);
+    resetGame();
   });
   actionBtn.addEventListener("click", () => {
     interact();
@@ -775,7 +936,8 @@ function checkTutorialAction(actionType) {
       completed = state.running;
       break;
     case "moveToWarehouse":
-      completed = state.player.x === 0 && state.player.y === 5;
+      const wh = getCurrentLevel().warehousePos;
+      completed = state.player.x === wh.x && state.player.y === wh.y;
       break;
     case "pickupGoods":
       completed = state.carry === tutorial.targetGood;
@@ -814,7 +976,7 @@ function endTutorial() {
   addLog("🎉 新手教学完成！开始你的便利店夜班吧！");
 
   if (state.running && !timer) {
-    timer = setInterval(tick, 1200);
+    timer = setInterval(tick, getCurrentLevel().tickInterval);
   }
 
   render();
@@ -839,6 +1001,7 @@ function renderCrates() {
 
 function startGame() {
   if (state.running) return;
+  const level = getCurrentLevel();
   state.running = true;
   resultEl.classList.add("hidden");
   state.goals = generateNightGoals();
@@ -849,7 +1012,7 @@ function startGame() {
     servedCount: 0,
     missedCount: 0
   };
-  for (let i = 0; i < INCOMING_PREVIEW; i++) {
+  for (let i = 0; i < level.incomingPreview; i++) {
     generateIncomingCustomer();
   }
   addLog("营业开始，顾客陆续进店。");
@@ -859,7 +1022,7 @@ function startGame() {
   });
   updateGoalProgress();
   if (!tutorial.active) {
-    timer = setInterval(tick, 1200);
+    timer = setInterval(tick, level.tickInterval);
   }
   render();
 }
@@ -874,6 +1037,8 @@ function resetGame() {
     tutorial.waitingForAction = false;
     tutorialOverlay.classList.add("hidden");
   }
+  renderCrates();
+  renderLevelName();
   render();
 }
 
@@ -882,41 +1047,43 @@ function tick() {
   state.minute += 5;
   processCustomerQueue();
   updateGoalProgress();
-  if (state.minute >= 120) {
+  if (state.minute >= getCurrentLevel().duration) {
     finish("天快亮了，夜班结束。");
   }
   render();
 }
 
 function generateIncomingCustomer() {
-  const goodKeys = Object.keys(goods);
+  const level = getCurrentLevel();
+  const goodKeys = level.goodKeys;
   const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
   const lastArrival = state.customers.incoming.length > 0
     ? state.customers.incoming[state.customers.incoming.length - 1].arrivalTick
     : Math.floor(state.minute / 5);
-  const baseGap = Math.max(1, 3 - Math.floor(state.minute / 40));
-  const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * 2);
+  const baseGap = Math.max(1, level.customerBaseGap - Math.floor(state.minute / 40));
+  const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * level.customerRandomRange);
   state.customers.incoming.push({
     id: state.customers.nextId++,
     goodKey: goodKey,
     arrivalTick: arrivalTick,
-    maxWait: CUSTOMER_WAIT_MIN + Math.floor(Math.random() * (CUSTOMER_WAIT_MAX - CUSTOMER_WAIT_MIN + 1))
+    maxWait: level.customerWaitMin + Math.floor(Math.random() * (level.customerWaitMax - level.customerWaitMin + 1))
   });
 }
 
 function processCustomerQueue() {
   const currentTick = Math.floor(state.minute / 5);
+  const level = getCurrentLevel();
 
   const arrived = state.customers.incoming.filter(c => c.arrivalTick <= currentTick);
   arrived.forEach(customer => {
-    if (state.customers.waiting.length < MAX_WAITING_CUSTOMERS) {
+    if (state.customers.waiting.length < level.maxWaiting) {
       const shelf = pickBestShelfForGood(customer.goodKey);
       const waitingCustomer = {
         ...customer,
         targetShelfId: shelf ? shelf.id : null,
         waited: 0,
-        displayX: shelf ? shelf.x : Math.floor(Math.random() * 6) + 1,
-        displayY: shelf ? shelf.y : Math.floor(Math.random() * 4) + 1
+        displayX: shelf ? shelf.x : Math.floor(Math.random() * (level.mapCols - 2)) + 1,
+        displayY: shelf ? shelf.y : Math.floor(Math.random() * (level.mapRows - 2)) + 1
       };
       state.customers.waiting.push(waitingCustomer);
       addLog(`👤 顾客#${customer.id}进店，想要${goods[customer.goodKey].icon}${goods[customer.goodKey].name}。`);
@@ -928,7 +1095,7 @@ function processCustomerQueue() {
   });
   state.customers.incoming = state.customers.incoming.filter(c => c.arrivalTick > currentTick);
 
-  while (state.customers.incoming.length < INCOMING_PREVIEW) {
+  while (state.customers.incoming.length < level.incomingPreview) {
     generateIncomingCustomer();
   }
 
@@ -1037,8 +1204,9 @@ function getPressureLevel() {
 
 function move(dx, dy) {
   if (!state.running) return;
-  const nextX = Math.max(0, Math.min(7, state.player.x + dx));
-  const nextY = Math.max(0, Math.min(5, state.player.y + dy));
+  const level = getCurrentLevel();
+  const nextX = Math.max(0, Math.min(level.mapCols - 1, state.player.x + dx));
+  const nextY = Math.max(0, Math.min(level.mapRows - 1, state.player.y + dy));
   if (nextX === state.player.x && nextY === state.player.y) return;
   state.player.x = nextX;
   state.player.y = nextY;
@@ -1048,8 +1216,9 @@ function move(dx, dy) {
 
 function interact() {
   if (!state.running) return;
+  const level = getCurrentLevel();
   const shelf = shelfAt(state.player.x, state.player.y);
-  if (state.player.x === 0 && state.player.y === 5) {
+  if (state.player.x === level.warehousePos.x && state.player.y === level.warehousePos.y) {
     state.carry = state.selected;
     spendEnergy(2);
     addLog(`从仓库拿起一箱${goods[state.carry].name}。`);
@@ -1177,6 +1346,7 @@ function render() {
   carryEl.textContent = state.carry ? goods[state.carry].name : "空";
   startBtn.disabled = state.running;
   actionBtn.disabled = !state.running;
+  changeLevelBtn.disabled = state.running;
   renderBoard();
   renderShelves();
   renderGoals();
@@ -1195,6 +1365,10 @@ function render() {
 
 function renderBoard() {
   boardEl.innerHTML = "";
+  const level = getCurrentLevel();
+  boardEl.style.gridTemplateColumns = `repeat(${level.mapCols}, 1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${level.mapRows}, 1fr)`;
+  boardEl.style.aspectRatio = `${level.mapCols} / ${level.mapRows}`;
   const tileCustomers = {};
   state.customers.waiting.forEach(customer => {
     const key = `${customer.displayX},${customer.displayY}`;
@@ -1202,16 +1376,16 @@ function renderBoard() {
     tileCustomers[key].push(customer);
   });
 
-  for (let y = 0; y < 6; y += 1) {
-    for (let x = 0; x < 8; x += 1) {
+  for (let y = 0; y < level.mapRows; y += 1) {
+    for (let x = 0; x < level.mapCols; x += 1) {
       const tile = document.createElement("div");
       tile.className = "tile";
       const label = document.createElement("span");
       label.className = "label";
-      if (x === 0 && y === 5) {
+      if (x === level.warehousePos.x && y === level.warehousePos.y) {
         tile.classList.add("warehouse");
         label.textContent = "仓库";
-      } else if (x === 7 && y === 0) {
+      } else if (x === level.checkoutPos.x && y === level.checkoutPos.y) {
         tile.classList.add("checkout");
         label.textContent = "收银";
       } else {
