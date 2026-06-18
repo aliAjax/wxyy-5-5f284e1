@@ -49,6 +49,21 @@
         <div id="goalsList" class="goals-list">
           <p class="goals-empty">点击「开始营业」生成本次夜班目标</p>
         </div>
+        <h2 style="margin-top: 18px;">👥 顾客队列</h2>
+        <div id="queuePanel" class="queue-panel">
+          <div class="queue-stats">
+            <span class="queue-stat">等待中: <strong id="waitingCount">0</strong></span>
+            <span class="queue-stat">压力: <strong id="pressureLevel">-</strong></span>
+          </div>
+          <h3 class="queue-subtitle">🛒 店内顾客</h3>
+          <div id="waitingList" class="waiting-list">
+            <p class="queue-empty">暂无顾客</p>
+          </div>
+          <h3 class="queue-subtitle">⏳ 即将到来</h3>
+          <div id="incomingList" class="incoming-list">
+            <p class="queue-empty">暂无预告</p>
+          </div>
+        </div>
         <h2 style="margin-top: 18px;">夜班记录</h2>
         <div id="log" class="log"></div>
         <button id="startBtn" class="primary" type="button">开始营业</button>

@@ -895,3 +895,247 @@ h2 {
   text-align: center;
   font-size: 15px;
 }
+
+.queue-panel {
+  background: #18221d;
+  border: 1px solid #3f5246;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.queue-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.queue-stat {
+  flex: 1;
+  background: #243129;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #cdd7cb;
+  text-align: center;
+}
+
+.queue-stat strong {
+  display: block;
+  color: #fff7cf;
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.queue-subtitle {
+  font-size: 13px;
+  color: #8fa192;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #3f5246;
+}
+
+.queue-subtitle:not(:first-of-type) {
+  margin-top: 14px;
+}
+
+.waiting-list,
+.incoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.queue-empty {
+  color: #8fa192;
+  font-size: 12px;
+  margin: 0;
+  padding: 10px;
+  text-align: center;
+  background: #17201c;
+  border-radius: 6px;
+  border: 1px dashed #3f5246;
+}
+
+.waiting-card {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #243129;
+  border-radius: 6px;
+  border-left: 3px solid #74b06a;
+  transition: all 0.2s;
+}
+
+.waiting-card.urgent {
+  border-left-color: #d45f4c;
+  background: #3a2722;
+  animation: urgentPulse 1s infinite;
+}
+
+.waiting-card.warning {
+  border-left-color: #f0c15d;
+  background: #3a3422;
+}
+
+@keyframes urgentPulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(212, 95, 76, 0.4); }
+  50% { box-shadow: 0 0 8px rgba(212, 95, 76, 0.6); }
+}
+
+.waiting-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: #18221d;
+  border-radius: 6px;
+  font-size: 18px;
+}
+
+.waiting-info {
+  min-width: 0;
+}
+
+.waiting-good {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff7cf;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.waiting-target {
+  font-size: 11px;
+  color: #8fa192;
+  margin-top: 2px;
+}
+
+.waiting-time {
+  text-align: right;
+  font-size: 11px;
+  color: #cdd7cb;
+}
+
+.waiting-time strong {
+  display: block;
+  font-size: 14px;
+  color: #fff7cf;
+}
+
+.waiting-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 99px;
+  background: #334237;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.waiting-bar span {
+  display: block;
+  height: 100%;
+  background: #74b06a;
+  transition: width 0.3s ease;
+}
+
+.waiting-card.warning .waiting-bar span {
+  background: #f0c15d;
+}
+
+.waiting-card.urgent .waiting-bar span {
+  background: #d45f4c;
+}
+
+.incoming-card {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #1e2a23;
+  border-radius: 6px;
+  opacity: 0.85;
+}
+
+.incoming-card.highlight {
+  background: #2e4b42;
+  opacity: 1;
+  border: 1px solid #f0c15d;
+}
+
+.incoming-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: #18221d;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.incoming-good {
+  font-size: 12px;
+  color: #cdd7cb;
+  font-weight: 600;
+}
+
+.incoming-countdown {
+  font-size: 11px;
+  color: #f0c15d;
+  font-weight: 700;
+  background: #3a3422;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.customer-on-map {
+  position: absolute;
+  width: 30%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f0c15d;
+  border: 2px solid #141916;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  animation: customerBob 1s ease-in-out infinite;
+}
+
+.customer-on-map.urgent {
+  background: #d45f4c;
+  animation: customerBob 0.5s ease-in-out infinite, urgentGlow 0.8s infinite;
+}
+
+@keyframes customerBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes urgentGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(212, 95, 76, 0.6); }
+  50% { box-shadow: 0 0 12px rgba(212, 95, 76, 0.9); }
+}
+
+.pressure-low { color: #74b06a !important; }
+.pressure-medium { color: #f0c15d !important; }
+.pressure-high { color: #d45f4c !important; }
+.pressure-extreme { color: #ff4a4a !important; animation: pressureFlash 0.6s infinite; }
+
+@keyframes pressureFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@media (max-width: 920px) {
+  .queue-stats {
+    grid-template-columns: repeat(2, 1fr);
+    display: grid;
+  }
+}

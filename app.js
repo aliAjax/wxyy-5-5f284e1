@@ -11,6 +11,10 @@ const carryEl = document.getElementById("carry");
 const startBtn = document.getElementById("startBtn");
 const restartBtn = document.getElementById("restartBtn");
 const actionBtn = document.getElementById("actionBtn");
+const waitingCountEl = document.getElementById("waitingCount");
+const pressureLevelEl = document.getElementById("pressureLevel");
+const waitingListEl = document.getElementById("waitingList");
+const incomingListEl = document.getElementById("incomingList");
 
 const tutorialOverlay = document.getElementById("tutorialOverlay");
 const tutorialSpotlight = document.getElementById("tutorialSpotlight");
@@ -281,6 +285,11 @@ const tutorialSteps = [
   }
 ];
 
+const CUSTOMER_WAIT_MIN = 3;
+const CUSTOMER_WAIT_MAX = 6;
+const INCOMING_PREVIEW = 5;
+const MAX_WAITING_CUSTOMERS = 8;
+
 function freshState() {
   const savedSalesCount = localStorage.getItem("codexSalesCount");
   const salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
@@ -305,7 +314,14 @@ function freshState() {
       drink: 0,
       noodle: 0
     },
-    goals: []
+    goals: [],
+    customers: {
+      incoming: [],
+      waiting: [],
+      nextId: 1,
+      servedCount: 0,
+      missedCount: 0
+    }
   };
 }
 
@@ -826,6 +842,16 @@ function startGame() {
   state.running = true;
   resultEl.classList.add("hidden");
   state.goals = generateNightGoals();
+  state.customers = {
+    incoming: [],
+    waiting: [],
+    nextId: 1,
+    servedCount: 0,
+    missedCount: 0
+  };
+  for (let i = 0; i < INCOMING_PREVIEW; i++) {
+    generateIncomingCustomer();
+  }
   addLog("营业开始，顾客陆续进店。");
   addLog("🎯 本次夜班目标已生成：");
   state.goals.forEach((g, i) => {
@@ -854,7 +880,7 @@ function resetGame() {
 function tick() {
   if (!state.running) return;
   state.minute += 5;
-  customerVisit();
+  processCustomerQueue();
   updateGoalProgress();
   if (state.minute >= 120) {
     finish("天快亮了，夜班结束。");
@@ -862,16 +888,108 @@ function tick() {
   render();
 }
 
-function customerVisit() {
-  const shelf = state.shelves[Math.floor(Math.random() * state.shelves.length)];
+function generateIncomingCustomer() {
+  const goodKeys = Object.keys(goods);
+  const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
+  const lastArrival = state.customers.incoming.length > 0
+    ? state.customers.incoming[state.customers.incoming.length - 1].arrivalTick
+    : Math.floor(state.minute / 5);
+  const baseGap = Math.max(1, 3 - Math.floor(state.minute / 40));
+  const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * 2);
+  state.customers.incoming.push({
+    id: state.customers.nextId++,
+    goodKey: goodKey,
+    arrivalTick: arrivalTick,
+    maxWait: CUSTOMER_WAIT_MIN + Math.floor(Math.random() * (CUSTOMER_WAIT_MAX - CUSTOMER_WAIT_MIN + 1))
+  });
+}
+
+function processCustomerQueue() {
+  const currentTick = Math.floor(state.minute / 5);
+
+  const arrived = state.customers.incoming.filter(c => c.arrivalTick <= currentTick);
+  arrived.forEach(customer => {
+    if (state.customers.waiting.length < MAX_WAITING_CUSTOMERS) {
+      const shelf = pickBestShelfForGood(customer.goodKey);
+      const waitingCustomer = {
+        ...customer,
+        targetShelfId: shelf ? shelf.id : null,
+        waited: 0,
+        displayX: shelf ? shelf.x : Math.floor(Math.random() * 6) + 1,
+        displayY: shelf ? shelf.y : Math.floor(Math.random() * 4) + 1
+      };
+      state.customers.waiting.push(waitingCustomer);
+      addLog(`👤 顾客#${customer.id}进店，想要${goods[customer.goodKey].icon}${goods[customer.goodKey].name}。`);
+    } else {
+      state.misses += 1;
+      state.customers.missedCount += 1;
+      addLog(`👥 店内太拥挤，顾客#${customer.id}直接离开，计入缺货！`);
+    }
+  });
+  state.customers.incoming = state.customers.incoming.filter(c => c.arrivalTick > currentTick);
+
+  while (state.customers.incoming.length < INCOMING_PREVIEW) {
+    generateIncomingCustomer();
+  }
+
+  const stillWaiting = [];
+  for (const customer of state.customers.waiting) {
+    const result = tryServeCustomer(customer);
+    if (result === 'served') {
+      continue;
+    } else if (result === 'waiting') {
+      customer.waited += 1;
+      if (customer.waited >= customer.maxWait) {
+        state.misses += 1;
+        state.customers.missedCount += 1;
+        const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
+        if (shelf) {
+          addLog(`😠 顾客#${customer.id}等了太久，${shelf.id}货架缺${goods[customer.goodKey].name}，愤怒离开！`);
+        } else {
+          addLog(`😠 顾客#${customer.id}等了太久，没有买到${goods[customer.goodKey].name}，愤怒离开！`);
+        }
+      } else {
+        stillWaiting.push(customer);
+      }
+    }
+  }
+  state.customers.waiting = stillWaiting;
+}
+
+function pickBestShelfForGood(goodKey) {
+  const compatibleShelves = state.shelves.filter(s => s.good === goodKey);
+  if (compatibleShelves.length === 0) return null;
+  const withStock = compatibleShelves.filter(s => s.stock > 0);
+  if (withStock.length > 0) {
+    return withStock.reduce((best, s) => s.stock > best.stock ? s : best, withStock[0]);
+  }
+  return compatibleShelves[Math.floor(Math.random() * compatibleShelves.length)];
+}
+
+function tryServeCustomer(customer) {
+  const shelf = customer.targetShelfId
+    ? state.shelves.find(s => s.id === customer.targetShelfId)
+    : pickBestShelfForGood(customer.goodKey);
+
+  if (!shelf) {
+    return 'waiting';
+  }
+
+  if (!customer.targetShelfId) {
+    customer.targetShelfId = shelf.id;
+    customer.displayX = shelf.x;
+    customer.displayY = shelf.y;
+  }
+
   if (shelf.stock > 0) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
+    state.customers.servedCount += 1;
     const prevCount = state.salesCount[shelf.good] || 0;
     state.salesCount[shelf.good] = prevCount + 1;
     const prevSessionCount = state.sessionSalesCount[shelf.good] || 0;
     state.sessionSalesCount[shelf.good] = prevSessionCount + 1;
-    addLog(`顾客买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
+    addLog(`✅ 顾客#${customer.id}买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
 
     if (!codexOverlay.classList.contains("hidden")) {
       renderCodexList();
@@ -879,10 +997,42 @@ function customerVisit() {
         renderCodexDetail(shelf.good);
       }
     }
-  } else {
-    state.misses += 1;
-    addLog(`${shelf.id}货架缺${goods[shelf.good].name}，顾客空手离开。`);
+    return 'served';
   }
+
+  return 'waiting';
+}
+
+function getPressureLevel() {
+  const waiting = state.customers.waiting.length;
+  const urgentCount = state.customers.waiting.filter(c => {
+    const remaining = c.maxWait - c.waited;
+    return remaining <= 1;
+  }).length;
+
+  let level, label, className;
+  if (waiting === 0) {
+    level = 0;
+    label = '轻松';
+    className = 'pressure-low';
+  } else if (waiting <= 2 && urgentCount === 0) {
+    level = 1;
+    label = '平稳';
+    className = 'pressure-low';
+  } else if (waiting <= 4 && urgentCount <= 1) {
+    level = 2;
+    label = '忙碌';
+    className = 'pressure-medium';
+  } else if (waiting <= 6) {
+    level = 3;
+    label = '紧张';
+    className = 'pressure-high';
+  } else {
+    level = 4;
+    label = '爆满!';
+    className = 'pressure-extreme';
+  }
+  return { level, label, className };
 }
 
 function move(dx, dy) {
@@ -951,6 +1101,10 @@ function finish(reason) {
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
   const finalScore = baseScore + goalsBonus;
+  const served = state.customers.servedCount;
+  const missed = state.customers.missedCount;
+  const total = served + missed;
+  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
 
   const goalsHtml = state.goals.length > 0 ? `
     <div class="result-goals">
@@ -967,14 +1121,35 @@ function finish(reason) {
     </div>
   ` : '';
 
+  const statsHtml = `
+    <div class="result-goals">
+      <h3>👥 顾客服务统计</h3>
+      <div class="result-goal-list">
+        <div class="result-goal-item success">
+          <span>✓ 成功服务顾客</span>
+          <span class="reward-tag">${served} 位</span>
+        </div>
+        <div class="result-goal-item fail">
+          <span>✗ 流失顾客（缺货/拥挤）</span>
+          <span class="reward-tag">${missed} 位</span>
+        </div>
+        <div class="result-goal-item ${serviceRate >= 70 ? 'success' : 'fail'}">
+          <span>${serviceRate >= 70 ? '✓' : '✗'} 服务满意率</span>
+          <span class="reward-tag">${serviceRate}%</span>
+        </div>
+      </div>
+    </div>
+  `;
+
   resultEl.innerHTML = `
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
+    ${statsHtml}
     ${goalsHtml}
     <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
   `;
   resultEl.classList.remove("hidden");
-  addLog(`结算完成，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。可以重新开始。`);
+  addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。可以重新开始。`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
     checkTutorialAction("finish");
@@ -992,6 +1167,7 @@ function render() {
   renderBoard();
   renderShelves();
   renderGoals();
+  renderQueue();
   renderLog();
 
   if (tutorial.active && tutorial.waitingForAction) {
@@ -1006,6 +1182,13 @@ function render() {
 
 function renderBoard() {
   boardEl.innerHTML = "";
+  const tileCustomers = {};
+  state.customers.waiting.forEach(customer => {
+    const key = `${customer.displayX},${customer.displayY}`;
+    if (!tileCustomers[key]) tileCustomers[key] = [];
+    tileCustomers[key].push(customer);
+  });
+
   for (let y = 0; y < 6; y += 1) {
     for (let x = 0; x < 8; x += 1) {
       const tile = document.createElement("div");
@@ -1028,9 +1211,99 @@ function renderBoard() {
       if (state.player.x === x && state.player.y === y) {
         tile.classList.add("player");
       }
+
+      const key = `${x},${y}`;
+      if (tileCustomers[key]) {
+        tileCustomers[key].forEach((customer, idx) => {
+          const customerEl = document.createElement("div");
+          const remaining = customer.maxWait - customer.waited;
+          const isUrgent = remaining <= 1;
+          customerEl.className = `customer-on-map ${isUrgent ? "urgent" : ""}`;
+          customerEl.textContent = goods[customer.goodKey].icon;
+          const offset = idx * 22;
+          customerEl.style.top = `8%`;
+          customerEl.style.left = `${8 + offset}%`;
+          customerEl.title = `顾客#${customer.id}: ${goods[customer.goodKey].name}，剩余等待${remaining}`;
+          tile.appendChild(customerEl);
+        });
+      }
+
       tile.appendChild(label);
       boardEl.appendChild(tile);
     }
+  }
+}
+
+function renderQueue() {
+  const pressure = getPressureLevel();
+  waitingCountEl.textContent = state.customers.waiting.length;
+  pressureLevelEl.textContent = pressure.label;
+  pressureLevelEl.className = pressure.className;
+
+  waitingListEl.innerHTML = "";
+  if (state.customers.waiting.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "queue-empty";
+    empty.textContent = "暂无顾客";
+    waitingListEl.appendChild(empty);
+  } else {
+    const sorted = [...state.customers.waiting].sort((a, b) => {
+      const remainA = a.maxWait - a.waited;
+      const remainB = b.maxWait - b.waited;
+      return remainA - remainB;
+    });
+    sorted.forEach(customer => {
+      const good = goods[customer.goodKey];
+      const remaining = customer.maxWait - customer.waited;
+      const ratio = Math.round((remaining / customer.maxWait) * 100);
+      let statusClass = "";
+      if (remaining <= 1) {
+        statusClass = "urgent";
+      } else if (remaining <= 2) {
+        statusClass = "warning";
+      }
+      const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
+      const hasStock = shelf && shelf.stock > 0;
+      const card = document.createElement("div");
+      card.className = `waiting-card ${statusClass}`;
+      card.innerHTML = `
+        <div class="waiting-icon">${good.icon}</div>
+        <div class="waiting-info">
+          <div class="waiting-good">${good.name} ${!hasStock && shelf ? '⚠️缺货' : ''}</div>
+          <div class="waiting-target">${shelf ? `目标: ${shelf.id}货架` : '寻找货架...'}</div>
+        </div>
+        <div class="waiting-time">
+          <span>剩余</span>
+          <strong>${remaining}</strong>
+        </div>
+        <div class="waiting-bar"><span style="width:${ratio}%"></span></div>
+      `;
+      waitingListEl.appendChild(card);
+    });
+  }
+
+  incomingListEl.innerHTML = "";
+  const currentTick = Math.floor(state.minute / 5);
+  const sortedIncoming = [...state.customers.incoming].sort((a, b) => a.arrivalTick - b.arrivalTick);
+  if (sortedIncoming.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "queue-empty";
+    empty.textContent = "暂无预告";
+    incomingListEl.appendChild(empty);
+  } else {
+    sortedIncoming.slice(0, 6).forEach(customer => {
+      const good = goods[customer.goodKey];
+      const ticksUntil = customer.arrivalTick - currentTick;
+      const isHighlight = ticksUntil <= 1;
+      const card = document.createElement("div");
+      card.className = `incoming-card ${isHighlight ? "highlight" : ""}`;
+      card.innerHTML = `
+        <div class="incoming-icon">${good.icon}</div>
+        <div class="incoming-good">${good.name}</div>
+        <div class="incoming-countdown">${ticksUntil <= 0 ? '即将进店' : ticksUntil + ' 格后'}</div>
+      `;
+      incomingListEl.appendChild(card);
+    });
   }
 }
 
