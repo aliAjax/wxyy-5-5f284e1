@@ -19,6 +19,12 @@
         <span>销售额 <strong id="sales">0</strong></span>
         <span>缺货 <strong id="misses">0</strong></span>
       </div>
+      <div class="clerk-badge" id="clerkBadge">
+        <span class="clerk-badge-icon" id="clerkLevelIcon">👷</span>
+        <span class="clerk-badge-text">Lv.<strong id="clerkLevelNum">1</strong> <span id="clerkLevelTitle">新手店员</span></span>
+        <div class="clerk-badge-exp"><span id="clerkExpFill" style="width:0%"></span></div>
+        <span class="clerk-badge-exp-text" id="clerkExpText">0 / 100</span>
+      </div>
     </section>
 
     <section class="game-layout">
@@ -31,6 +37,7 @@
         </div>
         <div id="shelfList" class="shelf-list"></div>
         <button id="codexBtn" class="secondary codex-btn" type="button">📖 商品图鉴</button>
+        <button id="clerkUpgradeBtn" class="secondary clerk-btn" type="button">⬆️ 店员升级</button>
       </aside>
 
       <section class="board-wrap">
@@ -124,6 +131,16 @@
           <p class="codex-empty">选择左侧商品查看详情</p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="clerkOverlay" class="clerk-overlay hidden">
+    <div class="clerk-dialog">
+      <div class="clerk-header">
+        <h2>⬆️ 店员升级</h2>
+        <button id="clerkCloseBtn" class="clerk-close" type="button">✕</button>
+      </div>
+      <div class="clerk-body" id="clerkBody"></div>
     </div>
   </div>
 

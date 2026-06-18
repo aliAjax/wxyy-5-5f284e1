@@ -1274,3 +1274,296 @@ h2 {
   padding-top: 8px;
   border-top: 1px dashed #3f5246;
 }
+
+.clerk-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #243129;
+  border: 1px solid #405244;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  min-width: min(520px, 100%);
+}
+
+.clerk-badge-icon {
+  font-size: 22px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: #18221d;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.clerk-badge-text {
+  color: #cdd7cb;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.clerk-badge-text strong {
+  color: #f0c15d;
+  font-size: 16px;
+}
+
+.clerk-badge-text span {
+  color: #fff7cf;
+}
+
+.clerk-badge-exp {
+  flex: 1;
+  height: 6px;
+  border-radius: 99px;
+  background: #334237;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.clerk-badge-exp span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f0c15d, #e7b951);
+  transition: width 0.4s ease;
+  border-radius: 99px;
+}
+
+.clerk-badge-exp-text {
+  font-size: 11px;
+  color: #8fa192;
+  white-space: nowrap;
+}
+
+.clerk-btn {
+  margin-top: 6px;
+}
+
+.shelf-low {
+  border-color: #d45f4c !important;
+  box-shadow: inset 0 0 8px rgba(212, 95, 76, 0.25);
+}
+
+.clerk-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+}
+
+.clerk-dialog {
+  background: #223028;
+  border: 2px solid #f0c15d;
+  border-radius: 12px;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+.clerk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid #45584b;
+  flex-shrink: 0;
+}
+
+.clerk-header h2 {
+  margin: 0;
+  color: #fff7cf;
+  font-size: 22px;
+}
+
+.clerk-close {
+  background: transparent;
+  border: 0;
+  color: #cdd7cb;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.clerk-close:hover {
+  background: #3f5246;
+  color: #fff7cf;
+}
+
+.clerk-body {
+  overflow-y: auto;
+  padding: 20px 22px;
+}
+
+.clerk-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 16px;
+  background: #18221d;
+  border: 1px solid #3f5246;
+  border-radius: 10px;
+}
+
+.clerk-profile-icon {
+  font-size: 48px;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  background: #243129;
+  border-radius: 12px;
+  flex-shrink: 0;
+  border: 1px solid #45584b;
+}
+
+.clerk-profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.clerk-profile-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff7cf;
+  margin-bottom: 8px;
+}
+
+.clerk-profile-lv {
+  font-size: 14px;
+  color: #f0c15d;
+  font-weight: 400;
+}
+
+.clerk-exp-bar-wrap {
+  margin-top: 4px;
+}
+
+.clerk-exp-bar {
+  height: 10px;
+  border-radius: 99px;
+  background: #334237;
+  overflow: hidden;
+}
+
+.clerk-exp-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f0c15d, #e7b951);
+  transition: width 0.4s ease;
+  border-radius: 99px;
+}
+
+.clerk-exp-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8fa192;
+  text-align: right;
+}
+
+.clerk-abilities {
+  margin-bottom: 18px;
+}
+
+.clerk-abilities h4,
+.clerk-effects h4 {
+  color: #f0c15d;
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.clerk-ability-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+
+.clerk-ability-card.unlocked {
+  background: #1e3a2c;
+  border-left: 3px solid #74b06a;
+}
+
+.clerk-ability-card.locked {
+  background: #1e2218;
+  border-left: 3px solid #555;
+  opacity: 0.6;
+}
+
+.clerk-ability-icon {
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: #18221d;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.clerk-ability-info {
+  min-width: 0;
+}
+
+.clerk-ability-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff7cf;
+}
+
+.clerk-ability-level {
+  font-size: 11px;
+  color: #8fa192;
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.clerk-ability-desc {
+  font-size: 12px;
+  color: #cdd7cb;
+  margin-top: 2px;
+}
+
+.clerk-effects {
+  border-top: 1px solid #45584b;
+  padding-top: 16px;
+}
+
+.clerk-effect-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #1e3a2c;
+  color: #a8d5a2;
+  border-left: 3px solid #74b06a;
+}
+
+.clerk-effect-empty {
+  color: #8fa192;
+  font-size: 13px;
+  text-align: center;
+  padding: 12px;
+}
+
+@media (max-width: 920px) {
+  .clerk-badge {
+    min-width: auto;
+  }
+}

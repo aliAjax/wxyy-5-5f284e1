@@ -138,6 +138,16 @@ const goalsListEl = document.getElementById("goalsList");
 const levelSelectOverlay = document.getElementById("levelSelectOverlay");
 const levelCardsEl = document.getElementById("levelCards");
 const levelNameEl = document.getElementById("levelName");
+const clerkBadgeEl = document.getElementById("clerkBadge");
+const clerkLevelIconEl = document.getElementById("clerkLevelIcon");
+const clerkLevelNumEl = document.getElementById("clerkLevelNum");
+const clerkLevelTitleEl = document.getElementById("clerkLevelTitle");
+const clerkExpFillEl = document.getElementById("clerkExpFill");
+const clerkExpTextEl = document.getElementById("clerkExpText");
+const clerkUpgradeBtn = document.getElementById("clerkUpgradeBtn");
+const clerkOverlay = document.getElementById("clerkOverlay");
+const clerkCloseBtn = document.getElementById("clerkCloseBtn");
+const clerkBodyEl = document.getElementById("clerkBody");
 
 const codexState = {
   selectedGood: null
@@ -184,6 +194,51 @@ const goods = {
     ]
   }
 };
+
+const clerkLevels = [
+  { level: 1, title: "新手店员", expRequired: 0, icon: "👷" },
+  { level: 2, title: "实习店员", expRequired: 100, icon: "🧑‍💼", ability: { id: "moveSave", name: "轻步如风", desc: "移动不再消耗体力" } },
+  { level: 3, title: "正式店员", expRequired: 300, icon: "👨‍💼", ability: { id: "restockBonus", name: "高效补货", desc: "每次补货数量+1" } },
+  { level: 4, title: "资深店员", expRequired: 600, icon: "🎯", ability: { id: "earlyAlert", name: "库存直觉", desc: "低库存提醒更早出现" } },
+  { level: 5, title: "店长", expRequired: 1000, icon: "⭐", ability: { id: "dualCarry", name: "双手搬运", desc: "可同时携带两种货物" } }
+];
+
+function loadClerkData() {
+  const saved = localStorage.getItem("clerkData");
+  if (saved) return JSON.parse(saved);
+  return { exp: 0, level: 1 };
+}
+
+function saveClerkData(data) {
+  localStorage.setItem("clerkData", JSON.stringify(data));
+}
+
+function getClerkLevelInfo(clerkLevel) {
+  return clerkLevels.find(cl => cl.level === clerkLevel) || clerkLevels[0];
+}
+
+function getNextClerkLevel(clerkLevel) {
+  return clerkLevels.find(cl => cl.level === clerkLevel + 1) || null;
+}
+
+function getUnlockedAbilities() {
+  const data = loadClerkData();
+  const abilities = [];
+  clerkLevels.forEach(cl => {
+    if (cl.ability && data.level >= cl.level) {
+      abilities.push(cl.ability.id);
+    }
+  });
+  return abilities;
+}
+
+function hasAbility(id) {
+  return getUnlockedAbilities().includes(id);
+}
+
+function maxCarryCount() {
+  return hasAbility("dualCarry") ? 2 : 1;
+}
 
 const CUSTOMER_WAIT_MIN = 3;
 const CUSTOMER_WAIT_MAX = 6;
@@ -398,7 +453,7 @@ function freshState() {
     sales: 0,
     misses: 0,
     player: { ...level.playerStart },
-    carry: null,
+    carry: [],
     selected: getCurrentLevelGoodKeys()[0],
     shelves: level.shelves.map((shelf) => ({ ...shelf })),
     log: ["卷帘门半开，夜班还没开始。"],
@@ -635,6 +690,130 @@ function renderLevelName() {
   }
 }
 
+function renderClerkBadge() {
+  const clerkData = loadClerkData();
+  const info = getClerkLevelInfo(clerkData.level);
+  const nextLvl = getNextClerkLevel(clerkData.level);
+
+  if (clerkLevelIconEl) clerkLevelIconEl.textContent = info.icon;
+  if (clerkLevelNumEl) clerkLevelNumEl.textContent = info.level;
+  if (clerkLevelTitleEl) clerkLevelTitleEl.textContent = info.title;
+
+  if (clerkExpFillEl) {
+    if (nextLvl) {
+      const prevExp = info.expRequired;
+      const progress = ((clerkData.exp - prevExp) / (nextLvl.expRequired - prevExp)) * 100;
+      clerkExpFillEl.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+    } else {
+      clerkExpFillEl.style.width = "100%";
+    }
+  }
+
+  if (clerkExpTextEl) {
+    clerkExpTextEl.textContent = nextLvl ? `${clerkData.exp} / ${nextLvl.expRequired}` : `${clerkData.exp} (MAX)`;
+  }
+}
+
+function openClerkOverlay() {
+  clerkOverlay.classList.remove("hidden");
+  renderClerkBody();
+}
+
+function closeClerkOverlay() {
+  clerkOverlay.classList.add("hidden");
+}
+
+function renderClerkBody() {
+  const clerkData = loadClerkData();
+  const info = getClerkLevelInfo(clerkData.level);
+  const nextLvl = getNextClerkLevel(clerkData.level);
+
+  let expBarHtml;
+  if (nextLvl) {
+    const prevExp = info.expRequired;
+    const progress = ((clerkData.exp - prevExp) / (nextLvl.expRequired - prevExp)) * 100;
+    expBarHtml = `
+      <div class="clerk-exp-bar-wrap">
+        <div class="clerk-exp-bar"><span style="width:${Math.min(100, Math.max(0, progress))}%"></span></div>
+        <div class="clerk-exp-label">${clerkData.exp} / ${nextLvl.expRequired} EXP</div>
+      </div>
+    `;
+  } else {
+    expBarHtml = `
+      <div class="clerk-exp-bar-wrap">
+        <div class="clerk-exp-bar"><span style="width:100%"></span></div>
+        <div class="clerk-exp-label">已满级 (${clerkData.exp} EXP)</div>
+      </div>
+    `;
+  }
+
+  const abilitiesHtml = clerkLevels.filter(cl => cl.ability).map(cl => {
+    const unlocked = clerkData.level >= cl.level;
+    return `
+      <div class="clerk-ability-card ${unlocked ? 'unlocked' : 'locked'}">
+        <div class="clerk-ability-icon">${unlocked ? '✅' : '🔒'}</div>
+        <div class="clerk-ability-info">
+          <div class="clerk-ability-name">${cl.ability.name} <span class="clerk-ability-level">Lv.${cl.level} 解锁</span></div>
+          <div class="clerk-ability-desc">${cl.ability.desc}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const activeEffects = getUnlockedAbilities();
+  const effectsHtml = activeEffects.length > 0 ? `
+    <div class="clerk-effects">
+      <h4>当前生效能力</h4>
+      ${activeEffects.map(id => {
+        const cl = clerkLevels.find(c => c.ability && c.ability.id === id);
+        if (!cl) return '';
+        let effectDetail = '';
+        switch (id) {
+          case 'moveSave': effectDetail = '移动消耗体力：0'; break;
+          case 'restockBonus': effectDetail = '补货数量：+3件/次'; break;
+          case 'earlyAlert': effectDetail = '低库存提醒阈值：50%'; break;
+          case 'dualCarry': effectDetail = '可携带：2箱货物'; break;
+        }
+        return `<div class="clerk-effect-item">💡 ${cl.ability.name} — ${effectDetail}</div>`;
+      }).join('')}
+    </div>
+  ` : '<div class="clerk-effects"><h4>当前生效能力</h4><div class="clerk-effect-empty">暂无能力，继续努力升级吧！</div></div>';
+
+  clerkBodyEl.innerHTML = `
+    <div class="clerk-profile">
+      <div class="clerk-profile-icon">${info.icon}</div>
+      <div class="clerk-profile-info">
+        <div class="clerk-profile-title">${info.title} <span class="clerk-profile-lv">Lv.${info.level}</span></div>
+        ${expBarHtml}
+      </div>
+    </div>
+    <div class="clerk-abilities">
+      <h4>能力列表</h4>
+      ${abilitiesHtml}
+    </div>
+    ${effectsHtml}
+  `;
+}
+
+function bindClerkControls() {
+  if (clerkUpgradeBtn) {
+    clerkUpgradeBtn.addEventListener("click", openClerkOverlay);
+  }
+  if (clerkCloseBtn) {
+    clerkCloseBtn.addEventListener("click", closeClerkOverlay);
+  }
+  if (clerkOverlay) {
+    clerkOverlay.addEventListener("click", (e) => {
+      if (e.target === clerkOverlay) closeClerkOverlay();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && clerkOverlay && !clerkOverlay.classList.contains("hidden")) {
+      closeClerkOverlay();
+    }
+  });
+}
+
 function openLevelSelect() {
   levelCardsEl.innerHTML = "";
   levels.forEach(level => {
@@ -695,8 +874,10 @@ function init() {
   bindTutorialControls();
   bindCodexControls();
   bindLevelSelectControls();
+  bindClerkControls();
   render();
   renderLevelName();
+  renderClerkBadge();
   tutorialTotalEl.textContent = tutorialSteps.length;
 
   window.addEventListener("resize", () => {
@@ -946,11 +1127,11 @@ function checkTutorialAction(actionType) {
       completed = state.player.x === wh.x && state.player.y === wh.y;
       break;
     case "pickupGoods":
-      completed = state.carry === tutorial.targetGood;
+      completed = state.carry.includes(tutorial.targetGood);
       break;
     case "restockShelf":
       const targetShelf = state.shelves.find(s => s.id === tutorial.targetShelfId);
-      completed = targetShelf && targetShelf.stock >= 3 && !state.carry;
+      completed = targetShelf && targetShelf.stock >= 3 && state.carry.length === 0;
       break;
     case "finish":
       completed = !resultEl.classList.contains("hidden");
@@ -994,7 +1175,10 @@ function renderCrates() {
     const good = goods[key];
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = `拿${good.name}`;
+    const carrying = state.carry.includes(key);
+    const full = state.carry.length >= maxCarryCount();
+    button.textContent = carrying ? `${good.name} ✓` : `拿${good.name}`;
+    if (carrying || full) button.disabled = true;
     button.addEventListener("click", () => {
       state.selected = key;
       interact();
@@ -1217,7 +1401,7 @@ function move(dx, dy) {
   if (nextX === state.player.x && nextY === state.player.y) return;
   state.player.x = nextX;
   state.player.y = nextY;
-  spendEnergy(1);
+  spendEnergy(hasAbility("moveSave") ? 0 : 1);
   render();
 }
 
@@ -1226,22 +1410,32 @@ function interact() {
   const level = getCurrentLevel();
   const shelf = shelfAt(state.player.x, state.player.y);
   if (state.player.x === level.warehousePos.x && state.player.y === level.warehousePos.y) {
-    state.carry = state.selected;
-    spendEnergy(2);
-    addLog(`从仓库拿起一箱${goods[state.carry].name}。`);
-  } else if (shelf) {
-    if (!state.carry) {
-      addLog("手上没有货箱。");
-    } else if (state.carry !== shelf.good) {
-      addLog(`${shelf.id}货架不收这种货。`);
-    } else if (shelf.stock >= shelf.max) {
-      addLog(`${shelf.id}货架已经满了。`);
+    if (state.carry.length >= maxCarryCount()) {
+      addLog("手上已经拿满了。");
+    } else if (state.carry.includes(state.selected)) {
+      addLog("已经拿了一箱这种货。");
     } else {
-      shelf.stock = Math.min(shelf.max, shelf.stock + 2);
-      state.carry = null;
-      spendEnergy(4);
-      addLog(`${shelf.id}货架补货完成。`);
-      updateGoalProgress();
+      state.carry.push(state.selected);
+      spendEnergy(2);
+      addLog(`从仓库拿起一箱${goods[state.selected].name}。`);
+    }
+  } else if (shelf) {
+    if (state.carry.length === 0) {
+      addLog("手上没有货箱。");
+    } else {
+      const carryIndex = state.carry.indexOf(shelf.good);
+      if (carryIndex === -1) {
+        addLog(`${shelf.id}货架不收你手上的货。`);
+      } else if (shelf.stock >= shelf.max) {
+        addLog(`${shelf.id}货架已经满了。`);
+      } else {
+        const restockAmount = hasAbility("restockBonus") ? 3 : 2;
+        shelf.stock = Math.min(shelf.max, shelf.stock + restockAmount);
+        state.carry.splice(carryIndex, 1);
+        spendEnergy(4);
+        addLog(`${shelf.id}货架补货完成（+${restockAmount}件）。`);
+        updateGoalProgress();
+      }
     }
   } else {
     addLog("这里没有可处理的东西。");
@@ -1330,15 +1524,53 @@ function finish(reason) {
     </div>
   `;
 
+  const clerkData = loadClerkData();
+  const prevLevel = clerkData.level;
+  const expGained = Math.max(10, Math.floor(finalScore * 0.3));
+  clerkData.exp += expGained;
+
+  let newLevel = 1;
+  for (let i = clerkLevels.length - 1; i >= 0; i--) {
+    if (clerkData.exp >= clerkLevels[i].expRequired) {
+      newLevel = clerkLevels[i].level;
+      break;
+    }
+  }
+  clerkData.level = newLevel;
+  saveClerkData(clerkData);
+
+  const leveledUp = newLevel > prevLevel;
+  const newAbility = leveledUp ? clerkLevels.find(cl => cl.level === newLevel) : null;
+
+  const clerkInfo = getClerkLevelInfo(prevLevel);
+  const nextLvl = getNextClerkLevel(prevLevel);
+  const expHtml = `
+    <div class="result-goals">
+      <h3>⬆️ 店员经验</h3>
+      <div class="result-goal-list">
+        <div class="result-goal-item success">
+          <span>本次获得经验</span>
+          <span class="reward-tag">+${expGained} EXP</span>
+        </div>
+        <div class="result-goal-item success">
+          <span>${clerkInfo.icon} ${clerkInfo.title} (Lv.${clerkInfo.level})${leveledUp ? ' → ' + clerkLevels.find(cl => cl.level === newLevel).icon + ' ' + clerkLevels.find(cl => cl.level === newLevel).title + ' (Lv.' + newLevel + ')' : ''}</span>
+          <span class="reward-tag">${clerkData.exp}${nextLvl ? ' / ' + nextLvl.expRequired : ' (MAX)'} EXP</span>
+        </div>
+        ${leveledUp && newAbility && newAbility.ability ? `<div class="result-goal-item success" style="background:#e6f4de;"><span>🎉 解锁新能力：${newAbility.ability.name}</span><span class="reward-tag">${newAbility.ability.desc}</span></div>` : ''}
+      </div>
+    </div>
+  `;
+
   resultEl.innerHTML = `
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
     ${statsHtml}
     ${goalsHtml}
+    ${expHtml}
     <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
   `;
   resultEl.classList.remove("hidden");
-  addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。可以重新开始。`);
+  addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。获得${expGained}经验。${leveledUp ? '🎉 升级到' + clerkLevels.find(cl => cl.level === newLevel).title + '！' : ''}`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
     checkTutorialAction("finish");
@@ -1350,7 +1582,7 @@ function render() {
   energyEl.textContent = state.energy;
   salesEl.textContent = state.sales;
   missesEl.textContent = state.misses;
-  carryEl.textContent = state.carry ? goods[state.carry].name : "空";
+  carryEl.textContent = state.carry.length > 0 ? state.carry.map(k => goods[k].name).join(" + ") : "空";
   startBtn.disabled = state.running;
   actionBtn.disabled = !state.running;
   changeLevelBtn.disabled = state.running;
@@ -1359,6 +1591,8 @@ function render() {
   renderGoals();
   renderQueue();
   renderLog();
+  renderClerkBadge();
+  renderCrates();
 
   if (tutorial.active && tutorial.waitingForAction) {
     setTimeout(() => {
@@ -1399,6 +1633,9 @@ function renderBoard() {
         const shelf = shelfAt(x, y);
         if (shelf) {
           tile.classList.add("shelf");
+          const shelfRatio = Math.round((shelf.stock / shelf.max) * 100);
+          const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
+          if (shelfRatio <= lowThreshold) tile.classList.add("shelf-low");
           label.textContent = `${shelf.id} ${goods[shelf.good].name} ${shelf.stock}/${shelf.max}`;
         }
       }
@@ -1507,7 +1744,8 @@ function renderShelves() {
     const card = document.createElement("div");
     card.className = "shelf-card";
     const ratio = Math.round((shelf.stock / shelf.max) * 100);
-    card.innerHTML = `<strong>${shelf.id} ${goods[shelf.good].name}</strong><span>${shelf.stock}/${shelf.max}</span><div class="meter ${ratio <= 35 ? "low" : ""}"><span style="width:${ratio}%"></span></div>`;
+    const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
+    card.innerHTML = `<strong>${shelf.id} ${goods[shelf.good].name}</strong><span>${shelf.stock}/${shelf.max}</span><div class="meter ${ratio <= lowThreshold ? "low" : ""}"><span style="width:${ratio}%"></span></div>`;
     shelfListEl.appendChild(card);
   });
 }
