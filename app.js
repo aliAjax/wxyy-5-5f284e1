@@ -25,11 +25,56 @@ const tutorialSkipBtn = document.getElementById("tutorialSkip");
 const tutorialChoice = document.getElementById("tutorialChoice");
 const choiceYesBtn = document.getElementById("choiceYes");
 const choiceNoBtn = document.getElementById("choiceNo");
+const codexBtn = document.getElementById("codexBtn");
+const codexOverlay = document.getElementById("codexOverlay");
+const codexCloseBtn = document.getElementById("codexCloseBtn");
+const codexListEl = document.getElementById("codexList");
+const codexDetailEl = document.getElementById("codexDetail");
+
+const codexState = {
+  selectedGood: null
+};
 
 const goods = {
-  snack: { name: "饭团", price: 12 },
-  drink: { name: "热饮", price: 9 },
-  noodle: { name: "泡面", price: 16 }
+  snack: {
+    name: "饭团",
+    price: 12,
+    icon: "🍙",
+    desc: "深夜充饥的经典选择，海苔包裹着温热的米饭，一口一个刚刚好。",
+    restockGain: 2,
+    missPenalty: 15,
+    unlockTexts: [
+      { threshold: 1, text: "初遇：有顾客买走了第一个饭团。" },
+      { threshold: 5, text: "小有名气：饭团开始成为夜班常客的夜宵首选。" },
+      { threshold: 15, text: "招牌商品：你的饭团已经远近闻名，顾客专门为它而来。" }
+    ]
+  },
+  drink: {
+    name: "热饮",
+    price: 9,
+    icon: "☕",
+    desc: "暖暖的热饮，深夜里握住纸杯的温度，是治愈疲惫的良药。",
+    restockGain: 2,
+    missPenalty: 15,
+    unlockTexts: [
+      { threshold: 1, text: "初遇：第一位顾客选择了热饮来取暖。" },
+      { threshold: 5, text: "温暖陪伴：越来越多的人在深夜点上一杯热饮。" },
+      { threshold: 15, text: "深夜灯塔：你的热饮成为了寒夜里最温暖的守候。" }
+    ]
+  },
+  noodle: {
+    name: "泡面",
+    price: 16,
+    icon: "🍜",
+    desc: "宵夜之王，热气腾腾的泡面总能慰藉辘辘饥肠。",
+    restockGain: 2,
+    missPenalty: 15,
+    unlockTexts: [
+      { threshold: 1, text: "初遇：有人在深夜泡了第一碗面。" },
+      { threshold: 5, text: "夜宵霸主：泡面的香气开始弥漫整个夜班。" },
+      { threshold: 15, text: "传奇之味：你的泡面销量让供应商都啧啧称奇。" }
+    ]
+  }
 };
 
 const baseShelves = [
@@ -115,6 +160,8 @@ const tutorialSteps = [
 ];
 
 function freshState() {
+  const savedSalesCount = localStorage.getItem("codexSalesCount");
+  const salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
   return {
     running: false,
     minute: 0,
@@ -125,8 +172,145 @@ function freshState() {
     carry: null,
     selected: "snack",
     shelves: baseShelves.map((shelf) => ({ ...shelf })),
-    log: ["卷帘门半开，夜班还没开始。"]
+    log: ["卷帘门半开，夜班还没开始。"],
+    salesCount: {
+      snack: salesCount.snack || 0,
+      drink: salesCount.drink || 0,
+      noodle: salesCount.noodle || 0
+    }
   };
+}
+
+function getCompatShelves(goodKey) {
+  return baseShelves
+    .filter((s) => s.good === goodKey)
+    .map((s) => s.id)
+    .join("、");
+}
+
+function getUnlockedTexts(goodKey, count) {
+  const good = goods[goodKey];
+  return good.unlockTexts.filter((t) => count >= t.threshold);
+}
+
+function getNextUnlock(goodKey, count) {
+  const good = goods[goodKey];
+  return good.unlockTexts.find((t) => count < t.threshold);
+}
+
+function openCodex() {
+  codexOverlay.classList.remove("hidden");
+  codexState.selectedGood = null;
+  renderCodexList();
+  renderCodexDetail(null);
+}
+
+function closeCodex() {
+  codexOverlay.classList.add("hidden");
+  codexState.selectedGood = null;
+}
+
+function renderCodexList() {
+  codexListEl.innerHTML = "";
+  Object.entries(goods).forEach(([key, good]) => {
+    const count = state.salesCount[key] || 0;
+    const item = document.createElement("div");
+    item.className = `codex-list-item ${codexState.selectedGood === key ? "active" : ""}`;
+    const unlocked = count >= 1;
+    if (!unlocked) {
+      item.classList.add("locked");
+    }
+    item.innerHTML = `
+      <div class="codex-item-icon">${unlocked ? good.icon : "❓"}</div>
+      <div class="codex-item-info">
+        <strong>${unlocked ? good.name : "???"}</strong>
+        <span>累计售出：${count}</span>
+      </div>
+    `;
+    item.addEventListener("click", () => {
+      codexState.selectedGood = key;
+      renderCodexList();
+      renderCodexDetail(key);
+    });
+    codexListEl.appendChild(item);
+  });
+}
+
+function renderCodexDetail(goodKey) {
+  if (!goodKey) {
+    codexDetailEl.innerHTML = `<p class="codex-empty">选择左侧商品查看详情</p>`;
+    return;
+  }
+
+  const good = goods[goodKey];
+  const count = state.salesCount[goodKey] || 0;
+  const unlocked = count >= 1;
+  const unlockedTexts = getUnlockedTexts(goodKey, count);
+  const nextUnlock = getNextUnlock(goodKey, count);
+  const compatShelves = getCompatShelves(goodKey);
+
+  if (!unlocked) {
+    codexDetailEl.innerHTML = `
+      <div class="codex-detail-locked">
+        <div class="codex-detail-icon">❓</div>
+        <h3>???</h3>
+        <p class="codex-hint">还没卖过这件商品，卖出 1 件即可解锁图鉴资料。</p>
+      </div>
+    `;
+    return;
+  }
+
+  codexDetailEl.innerHTML = `
+    <div class="codex-detail-header">
+      <div class="codex-detail-icon">${good.icon}</div>
+      <div>
+        <h3>${good.name}</h3>
+        <p class="codex-desc">${good.desc}</p>
+      </div>
+    </div>
+    <div class="codex-stats">
+      <div class="codex-stat">
+        <span class="codex-stat-label">售价</span>
+        <span class="codex-stat-value">¥${good.price}</span>
+      </div>
+      <div class="codex-stat">
+        <span class="codex-stat-label">适配货架</span>
+        <span class="codex-stat-value">${compatShelves}</span>
+      </div>
+      <div class="codex-stat">
+        <span class="codex-stat-label">补货收益</span>
+        <span class="codex-stat-value">+${good.restockGain} 件/次</span>
+      </div>
+      <div class="codex-stat">
+        <span class="codex-stat-label">缺货影响</span>
+        <span class="codex-stat-value">-${good.missPenalty} 评分</span>
+      </div>
+      <div class="codex-stat full">
+        <span class="codex-stat-label">累计销量</span>
+        <span class="codex-stat-value">${count} 件</span>
+      </div>
+    </div>
+    <div class="codex-unlocks">
+      <h4>解锁记录</h4>
+      ${unlockedTexts.length > 0 ? unlockedTexts.map((t) => `<div class="codex-unlock-item unlocked">✓ ${t.text}</div>`).join("") : ""}
+      ${nextUnlock ? `<div class="codex-unlock-item next">还差 ${nextUnlock.threshold - count} 件解锁：${nextUnlock.text}</div>` : `<div class="codex-unlock-item max">已解锁全部记录！</div>`}
+    </div>
+  `;
+}
+
+function bindCodexControls() {
+  codexBtn.addEventListener("click", openCodex);
+  codexCloseBtn.addEventListener("click", closeCodex);
+  codexOverlay.addEventListener("click", (e) => {
+    if (e.target === codexOverlay) {
+      closeCodex();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !codexOverlay.classList.contains("hidden")) {
+      closeCodex();
+    }
+  });
 }
 
 function init() {
@@ -134,6 +318,7 @@ function init() {
   renderCrates();
   bindControls();
   bindTutorialControls();
+  bindCodexControls();
   render();
   tutorialTotalEl.textContent = tutorialSteps.length;
 
@@ -474,6 +659,7 @@ function customerVisit() {
   if (shelf.stock > 0) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
+    state.salesCount[shelf.good] = (state.salesCount[shelf.good] || 0) + 1;
     addLog(`顾客买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
   } else {
     state.misses += 1;
@@ -539,6 +725,7 @@ function finish(reason) {
   state.running = false;
   clearInterval(timer);
   timer = null;
+  localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
   const score = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   resultEl.innerHTML = `<h2>${reason}</h2><p>最终销售额${state.sales}，缺货${state.misses}次，剩余体力${state.energy}，评分${score}。</p>`;
   resultEl.classList.remove("hidden");

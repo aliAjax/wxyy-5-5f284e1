@@ -30,6 +30,7 @@
           <strong id="carry">空</strong>
         </div>
         <div id="shelfList" class="shelf-list"></div>
+        <button id="codexBtn" class="secondary codex-btn" type="button">📖 商品图鉴</button>
       </aside>
 
       <section class="board-wrap">
@@ -77,6 +78,21 @@
       <div class="tutorial-choice-actions">
         <button id="choiceNo" class="secondary" type="button">跳过</button>
         <button id="choiceYes" class="primary" type="button">开始教学</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="codexOverlay" class="codex-overlay hidden">
+    <div class="codex-dialog">
+      <div class="codex-header">
+        <h2>📖 商品图鉴</h2>
+        <button id="codexCloseBtn" class="codex-close" type="button">✕</button>
+      </div>
+      <div class="codex-body">
+        <div class="codex-list" id="codexList"></div>
+        <div class="codex-detail" id="codexDetail">
+          <p class="codex-empty">选择左侧商品查看详情</p>
+        </div>
       </div>
     </div>
   </div>
