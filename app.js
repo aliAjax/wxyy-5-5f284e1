@@ -355,8 +355,10 @@ const goalTemplates = [
     type: "shelf_stock",
     name: "货架库存保持",
     generate: () => {
-      const levelShelves = getCurrentLevel().shelves;
-      const shelf = levelShelves[Math.floor(Math.random() * levelShelves.length)];
+      const shelvesForGoal = state && state.shelves && state.shelves.length > 0
+        ? state.shelves
+        : getCurrentLevel().shelves;
+      const shelf = shelvesForGoal[Math.floor(Math.random() * shelvesForGoal.length)];
       const good = goods[shelf.good];
       const targets = [1, 2];
       const target = targets[Math.floor(Math.random() * targets.length)];
