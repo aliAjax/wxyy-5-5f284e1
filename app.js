@@ -30,6 +30,7 @@ const codexOverlay = document.getElementById("codexOverlay");
 const codexCloseBtn = document.getElementById("codexCloseBtn");
 const codexListEl = document.getElementById("codexList");
 const codexDetailEl = document.getElementById("codexDetail");
+const goalsListEl = document.getElementById("goalsList");
 
 const codexState = {
   selectedGood: null
@@ -82,6 +83,127 @@ const baseShelves = [
   { id: "B", x: 5, y: 1, good: "drink", stock: 3, max: 5 },
   { id: "C", x: 2, y: 4, good: "noodle", stock: 2, max: 4 },
   { id: "D", x: 6, y: 4, good: "snack", stock: 2, max: 5 }
+];
+
+const goalTemplates = [
+  {
+    type: "total_sales",
+    name: "总销售额目标",
+    generate: () => {
+      const targets = [120, 150, 180, 200, 240];
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      return {
+        type: "total_sales",
+        title: `夜班总销售额达到 ¥${target}`,
+        target: target,
+        reward: Math.round(target * 0.4),
+        unit: "¥"
+      };
+    },
+    getProgress: (state, goal) => Math.min(state.sales, goal.target)
+  },
+  {
+    type: "good_sales",
+    name: "指定商品销售额",
+    generate: () => {
+      const goodKeys = Object.keys(goods);
+      const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
+      const good = goods[goodKey];
+      const multipliers = [4, 5, 6, 7, 8];
+      const count = multipliers[Math.floor(Math.random() * multipliers.length)];
+      const target = good.price * count;
+      return {
+        type: "good_sales",
+        title: `${good.icon} ${good.name}销售额达到 ¥${target}`,
+        target: target,
+        goodKey: goodKey,
+        reward: Math.round(target * 0.5),
+        unit: "¥"
+      };
+    },
+    getProgress: (state, goal) => {
+      const count = state.salesCount[goal.goodKey] || 0;
+      return Math.min(count * goods[goal.goodKey].price, goal.target);
+    }
+  },
+  {
+    type: "good_count",
+    name: "指定商品销量",
+    generate: () => {
+      const goodKeys = Object.keys(goods);
+      const goodKey = goodKeys[Math.floor(Math.random() * goodKeys.length)];
+      const good = goods[goodKey];
+      const targets = [5, 6, 7, 8, 10];
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      return {
+        type: "good_count",
+        title: `${good.icon} 卖出${target}份${good.name}`,
+        target: target,
+        goodKey: goodKey,
+        reward: target * 6,
+        unit: "份"
+      };
+    },
+    getProgress: (state, goal) => Math.min(state.salesCount[goal.goodKey] || 0, goal.target)
+  },
+  {
+    type: "max_misses",
+    name: "缺货次数限制",
+    generate: () => {
+      const targets = [1, 2, 3, 4];
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      return {
+        type: "max_misses",
+        title: `缺货次数不超过 ${target} 次`,
+        target: target,
+        reward: (8 - target) * 12,
+        unit: "次",
+        inverse: true
+      };
+    },
+    getProgress: (state, goal) => state.misses
+  },
+  {
+    type: "min_energy",
+    name: "保留体力",
+    generate: () => {
+      const targets = [30, 40, 50, 60];
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      return {
+        type: "min_energy",
+        title: `夜班结束时体力保留 ${target} 以上`,
+        target: target,
+        reward: target + 10,
+        unit: "点",
+        endOnly: true
+      };
+    },
+    getProgress: (state, goal) => state.energy
+  },
+  {
+    type: "shelf_stock",
+    name: "货架库存保持",
+    generate: () => {
+      const shelf = baseShelves[Math.floor(Math.random() * baseShelves.length)];
+      const good = goods[shelf.good];
+      const targets = [1, 2];
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      return {
+        type: "shelf_stock",
+        title: `${shelf.id}货架${good.icon}${good.name}库存从不低于 ${target}`,
+        target: target,
+        shelfId: shelf.id,
+        reward: 35 + target * 15,
+        unit: "件",
+        failOnBreak: true,
+        broken: false
+      };
+    },
+    getProgress: (state, goal) => {
+      const shelf = state.shelves.find(s => s.id === goal.shelfId);
+      return shelf ? shelf.stock : 0;
+    }
+  }
 ];
 
 let state;
@@ -177,8 +299,96 @@ function freshState() {
       snack: salesCount.snack || 0,
       drink: salesCount.drink || 0,
       noodle: salesCount.noodle || 0
-    }
+    },
+    goals: []
   };
+}
+
+function generateNightGoals() {
+  const shuffled = [...goalTemplates].sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, 3);
+  return selected.map(template => {
+    const goal = template.generate();
+    goal.templateType = template.type;
+    goal.completed = false;
+    goal.failed = false;
+    return goal;
+  });
+}
+
+function getGoalTemplate(type) {
+  return goalTemplates.find(t => t.type === type);
+}
+
+function updateGoalProgress() {
+  if (!state.goals || state.goals.length === 0) return;
+
+  state.goals.forEach(goal => {
+    if (goal.completed || goal.failed) return;
+
+    const template = getGoalTemplate(goal.templateType);
+    if (!template) return;
+
+    const progress = template.getProgress(state, goal);
+
+    if (goal.failOnBreak) {
+      if (progress < goal.target) {
+        goal.failed = true;
+        goal.broken = true;
+        addLog(`❌ 目标失败：${goal.title}`);
+      }
+      return;
+    }
+
+    if (goal.inverse) {
+      if (progress > goal.target) {
+        goal.failed = true;
+        addLog(`❌ 目标失败：${goal.title}`);
+      }
+    } else {
+      if (progress >= goal.target) {
+        goal.completed = true;
+        addLog(`✅ 目标达成：${goal.title}（+${goal.reward}分）`);
+      }
+    }
+  });
+}
+
+function evaluateEndGoals() {
+  if (!state.goals || state.goals.length === 0) return;
+
+  state.goals.forEach(goal => {
+    if (goal.completed || goal.failed) return;
+    if (!goal.endOnly) return;
+
+    const template = getGoalTemplate(goal.templateType);
+    if (!template) return;
+
+    const progress = template.getProgress(state, goal);
+
+    if (goal.inverse) {
+      if (progress > goal.target) {
+        goal.failed = true;
+      } else {
+        goal.completed = true;
+        addLog(`✅ 目标达成：${goal.title}（+${goal.reward}分）`);
+      }
+    } else {
+      if (progress >= goal.target) {
+        goal.completed = true;
+        addLog(`✅ 目标达成：${goal.title}（+${goal.reward}分）`);
+      } else {
+        goal.failed = true;
+      }
+    }
+  });
+}
+
+function calcGoalsBonus() {
+  if (!state.goals || state.goals.length === 0) return 0;
+  return state.goals
+    .filter(g => g.completed)
+    .reduce((sum, g) => sum + g.reward, 0);
 }
 
 function getCompatShelves(goodKey) {
@@ -613,7 +823,13 @@ function startGame() {
   if (state.running) return;
   state.running = true;
   resultEl.classList.add("hidden");
+  state.goals = generateNightGoals();
   addLog("营业开始，顾客陆续进店。");
+  addLog("🎯 本次夜班目标已生成：");
+  state.goals.forEach((g, i) => {
+    addLog(`  ${i + 1}. ${g.title}（奖励 +${g.reward}分）`);
+  });
+  updateGoalProgress();
   if (!tutorial.active) {
     timer = setInterval(tick, 1200);
   }
@@ -637,6 +853,7 @@ function tick() {
   if (!state.running) return;
   state.minute += 5;
   customerVisit();
+  updateGoalProgress();
   if (state.minute >= 120) {
     finish("天快亮了，夜班结束。");
   }
@@ -694,6 +911,7 @@ function interact() {
       state.carry = null;
       spendEnergy(4);
       addLog(`${shelf.id}货架补货完成。`);
+      updateGoalProgress();
     }
   } else {
     addLog("这里没有可处理的东西。");
@@ -703,6 +921,7 @@ function interact() {
 
 function spendEnergy(amount) {
   state.energy = Math.max(0, state.energy - amount);
+  updateGoalProgress();
   if (state.energy === 0) {
     finish("体力耗尽，夜班提前结束。");
   }
@@ -723,10 +942,35 @@ function finish(reason) {
   clearInterval(timer);
   timer = null;
   localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
-  const score = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
-  resultEl.innerHTML = `<h2>${reason}</h2><p>最终销售额${state.sales}，缺货${state.misses}次，剩余体力${state.energy}，评分${score}。</p>`;
+
+  evaluateEndGoals();
+  const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
+  const goalsBonus = calcGoalsBonus();
+  const finalScore = baseScore + goalsBonus;
+
+  const goalsHtml = state.goals.length > 0 ? `
+    <div class="result-goals">
+      <h3>🎯 夜班目标结算</h3>
+      <div class="result-goal-list">
+        ${state.goals.map(g => `
+          <div class="result-goal-item ${g.completed ? 'success' : 'fail'}">
+            <span>${g.completed ? '✓' : '✗'} ${g.title}</span>
+            <span class="reward-tag">${g.completed ? '+' + g.reward : '未达成'}</span>
+          </div>
+        `).join('')}
+      </div>
+      ${goalsBonus > 0 ? `<div class="result-bonus">🌟 目标奖励总分：+${goalsBonus} 分</div>` : ''}
+    </div>
+  ` : '';
+
+  resultEl.innerHTML = `
+    <h2>${reason}</h2>
+    <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
+    ${goalsHtml}
+    <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
+  `;
   resultEl.classList.remove("hidden");
-  addLog("结算完成，可以重新开始。");
+  addLog(`结算完成，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。可以重新开始。`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
     checkTutorialAction("finish");
@@ -743,6 +987,7 @@ function render() {
   actionBtn.disabled = !state.running;
   renderBoard();
   renderShelves();
+  renderGoals();
   renderLog();
 
   if (tutorial.active && tutorial.waitingForAction) {
@@ -793,6 +1038,73 @@ function renderShelves() {
     const ratio = Math.round((shelf.stock / shelf.max) * 100);
     card.innerHTML = `<strong>${shelf.id} ${goods[shelf.good].name}</strong><span>${shelf.stock}/${shelf.max}</span><div class="meter ${ratio <= 35 ? "low" : ""}"><span style="width:${ratio}%"></span></div>`;
     shelfListEl.appendChild(card);
+  });
+}
+
+function renderGoals() {
+  goalsListEl.innerHTML = "";
+
+  if (!state.goals || state.goals.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "goals-empty";
+    empty.textContent = state.running ? "暂无目标" : "点击「开始营业」生成本次夜班目标";
+    goalsListEl.appendChild(empty);
+    return;
+  }
+
+  state.goals.forEach(goal => {
+    const template = getGoalTemplate(goal.templateType);
+    const progress = template ? template.getProgress(state, goal) : 0;
+
+    let ratio, badgeText, badgeClass;
+
+    if (goal.completed) {
+      badgeText = "已达成";
+      badgeClass = "completed";
+      ratio = 100;
+    } else if (goal.failed) {
+      badgeText = "已失败";
+      badgeClass = "failed";
+      ratio = goal.inverse ? 100 : (goal.target > 0 ? Math.min(100, (progress / goal.target) * 100) : 0);
+    } else {
+      badgeText = "进行中";
+      badgeClass = "progress";
+      if (goal.failOnBreak) {
+        ratio = 100;
+      } else if (goal.inverse) {
+        ratio = goal.target > 0 ? Math.max(0, 100 - (progress / goal.target) * 100) : 100;
+      } else {
+        ratio = goal.target > 0 ? Math.min(100, (progress / goal.target) * 100) : 0;
+      }
+    }
+
+    let progressText;
+    if (goal.unit === "¥") {
+      progressText = `${goal.unit}${progress} / ${goal.unit}${goal.target}`;
+    } else if (goal.inverse) {
+      progressText = `当前 ${progress}${goal.unit} / 上限 ${goal.target}${goal.unit}`;
+    } else if (goal.failOnBreak) {
+      progressText = `当前 ${progress}${goal.unit} / 需保持 ≥${goal.target}${goal.unit}`;
+    } else if (goal.endOnly) {
+      progressText = `当前 ${progress}${goal.unit} / 目标 ≥${goal.target}${goal.unit}（结算时判定）`;
+    } else {
+      progressText = `${progress}${goal.unit} / ${goal.target}${goal.unit}`;
+    }
+
+    const card = document.createElement("div");
+    card.className = `goal-card ${goal.completed ? "completed" : ""} ${goal.failed ? "failed" : ""}`;
+    card.innerHTML = `
+      <div class="goal-header">
+        <p class="goal-title">${goal.title}</p>
+        <span class="goal-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="goal-meta">
+        <span>${progressText}</span>
+        <span class="goal-reward">奖励 +${goal.reward}</span>
+      </div>
+      <div class="goal-meter"><span style="width:${ratio}%"></span></div>
+    `;
+    goalsListEl.appendChild(card);
   });
 }
 
