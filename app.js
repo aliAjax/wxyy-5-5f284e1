@@ -4668,16 +4668,19 @@ function closeNightReport() {
   nightReportOverlay.classList.add('hidden');
 }
 
-function openNightReportFromReplay() {
+function generateNightReportFromSavedReplay() {
   const replayData = replayLoadSaved();
-  if (!replayData) {
+  if (!replayData) return null;
+  return generateNightReportFromReplay(replayData);
+}
+
+function openNightReportFromReplay() {
+  const reportData = generateNightReportFromSavedReplay();
+  if (!reportData) {
     addLog('没有可查看的回放数据。');
     return;
   }
-  const reportData = generateNightReportFromReplay(replayData);
-  if (reportData) {
-    openNightReport(reportData);
-  }
+  openNightReport(reportData);
 }
 
 function bindNightReportControls() {
@@ -6006,7 +6009,7 @@ function finish(reason) {
   const resultReportBtn = document.getElementById("resultReportBtn");
   if (resultReportBtn) {
     resultReportBtn.addEventListener("click", () => {
-      const reportData = generateNightReportFromState();
+      const reportData = generateNightReportFromSavedReplay() || generateNightReportFromState();
       openNightReport(reportData);
     });
   }
