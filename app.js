@@ -260,6 +260,10 @@ const codexState = {
 
 const EVENT_WARNING_TICKS = 2;
 
+function getEventWarningTicks() {
+  return EVENT_WARNING_TICKS + getEventWarningBonus();
+}
+
 const eventTemplates = {
   hotDrinkSurge: {
     id: "hotDrinkSurge",
@@ -698,7 +702,7 @@ function createEventWarning(template, maxDuration) {
     warningTitle: template.warningTitle,
     warningDesc: template.warningDesc,
     startTick: currentTick,
-    remainingTicks: EVENT_WARNING_TICKS,
+    remainingTicks: getEventWarningTicks(),
     maxDuration: maxDuration,
     selectedResponse: null
   };
@@ -965,6 +969,9 @@ function applyEventVisualEffects(template, apply, effect) {
       break;
     case "warehouseShortage":
       state.warehouseBlocked = apply && !actualEffect.energySaveDuring;
+      if (!state.warehouseBlocked) {
+        state.emergencySupplyUsed = 0;
+      }
       break;
     case "fatigueIncrease":
       if (apply) {
@@ -1070,7 +1077,7 @@ function renderActiveEvents() {
         <div class="active-event-name">${warning.warningTitle || '预警中'}</div>
         <div class="active-event-remaining">
           <span>预警剩余 ${warning.remainingTicks} 格</span>
-          <div class="active-event-bar warning"><span style="width:${(warning.remainingTicks / EVENT_WARNING_TICKS) * 100}%"></span></div>
+          <div class="active-event-bar warning"><span style="width:${(warning.remainingTicks / getEventWarningTicks()) * 100}%"></span></div>
         </div>
         <div class="active-event-response">应对：${respText}</div>
       </div>
@@ -1108,6 +1115,7 @@ function renderActiveEvents() {
 function resetAllEventEffects(preserveWarning = false) {
   if (state) {
     state.warehouseBlocked = false;
+    state.emergencySupplyUsed = 0;
     if (state.shelves) {
       state.shelves.forEach(shelf => {
         shelf._broken = false;
@@ -1179,14 +1187,193 @@ const clerkLevels = [
   { level: 5, title: "店长", expRequired: 1000, icon: "⭐", ability: { id: "dualCarry", name: "双手搬运", desc: "可同时携带两种货物" } }
 ];
 
+const skillBranches = {
+  restock: {
+    name: "补货专精",
+    icon: "📦",
+    desc: "提升补货效率与应急能力",
+    skills: [
+      {
+        id: "restockBoost",
+        name: "大量补货",
+        icon: "📦",
+        desc: "每次补货数量额外+1",
+        maxLevel: 3,
+        effectPerLevel: 1
+      },
+      {
+        id: "emergencySupply",
+        name: "应急取货",
+        icon: "🆘",
+        desc: "仓库断货时仍可额外取货N次（每次事件）",
+        maxLevel: 2,
+        effectPerLevel: 1
+      }
+    ]
+  },
+  stamina: {
+    name: "体力专精",
+    icon: "💪",
+    desc: "增强体力与持久力",
+    skills: [
+      {
+        id: "energyEfficient",
+        name: "节省体力",
+        icon: "⚡",
+        desc: "所有行动体力消耗减少1点（最低为0）",
+        maxLevel: 3,
+        effectPerLevel: 1
+      },
+      {
+        id: "staminaBoost",
+        name: "体力充沛",
+        icon: "💪",
+        desc: "体力上限+20",
+        maxLevel: 2,
+        effectPerLevel: 20
+      }
+    ]
+  },
+  foresight: {
+    name: "预判专精",
+    icon: "🔮",
+    desc: "提前感知顾客与事件",
+    skills: [
+      {
+        id: "previewExtend",
+        name: "未卜先知",
+        icon: "👁️",
+        desc: "顾客入店预告提前N格显示",
+        maxLevel: 2,
+        effectPerLevel: 1
+      },
+      {
+        id: "earlyWarning",
+        name: "事件预感",
+        icon: "⚠️",
+        desc: "经营事件预警提前N格出现",
+        maxLevel: 2,
+        effectPerLevel: 1
+      },
+      {
+        id: "lowStockSense",
+        name: "库存敏锐",
+        icon: "📊",
+        desc: "低库存提醒阈值提高10%",
+        maxLevel: 2,
+        effectPerLevel: 10
+      }
+    ]
+  }
+};
+
+function getDefaultSkillData() {
+  const skills = {};
+  Object.values(skillBranches).forEach(branch => {
+    branch.skills.forEach(skill => {
+      skills[skill.id] = 0;
+    });
+  });
+  return skills;
+}
+
 function loadClerkData() {
   const saved = localStorage.getItem("clerkData");
-  if (saved) return JSON.parse(saved);
-  return { exp: 0, level: 1 };
+  const defaultSkills = getDefaultSkillData();
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (!parsed.skillPoints) parsed.skillPoints = 0;
+    if (!parsed.skills) parsed.skills = defaultSkills;
+    else {
+      Object.keys(defaultSkills).forEach(k => {
+        if (parsed.skills[k] === undefined) parsed.skills[k] = 0;
+      });
+    }
+    if (!parsed.emergencySupplyUsed) parsed.emergencySupplyUsed = 0;
+    return parsed;
+  }
+  return { exp: 0, level: 1, skillPoints: 0, skills: defaultSkills, emergencySupplyUsed: 0 };
 }
 
 function saveClerkData(data) {
   localStorage.setItem("clerkData", JSON.stringify(data));
+}
+
+function getSkillLevel(skillId) {
+  const data = loadClerkData();
+  return data.skills[skillId] || 0;
+}
+
+function getSkillEffect(skillId) {
+  const level = getSkillLevel(skillId);
+  for (const branch of Object.values(skillBranches)) {
+    const skill = branch.skills.find(s => s.id === skillId);
+    if (skill) return level * skill.effectPerLevel;
+  }
+  return 0;
+}
+
+function getTotalSkillPointsEarned() {
+  const data = loadClerkData();
+  return Math.max(0, data.level - 1);
+}
+
+function getAvailableSkillPoints() {
+  const data = loadClerkData();
+  return data.skillPoints;
+}
+
+function upgradeSkill(skillId) {
+  const data = loadClerkData();
+  for (const branch of Object.values(skillBranches)) {
+    const skill = branch.skills.find(s => s.id === skillId);
+    if (skill) {
+      if (data.skillPoints <= 0) return { success: false, reason: "技能点不足" };
+      if ((data.skills[skillId] || 0) >= skill.maxLevel) return { success: false, reason: "已达最高等级" };
+      data.skills[skillId] = (data.skills[skillId] || 0) + 1;
+      data.skillPoints -= 1;
+      saveClerkData(data);
+      if (skillId === "staminaBoost") {
+        const newMax = 100 + getMaxEnergyBonus();
+        if (state) {
+          state.maxEnergy = newMax;
+          state.energy = Math.min(state.energy + skill.effectPerLevel, newMax);
+        }
+      }
+      renderAll();
+      return { success: true, newLevel: data.skills[skillId] };
+    }
+  }
+  return { success: false, reason: "技能不存在" };
+}
+
+function getRestockBonusAmount() {
+  const base = hasAbility("restockBonus") ? 3 : 2;
+  return base + getSkillEffect("restockBoost");
+}
+
+function getEnergyCostReduction() {
+  return getSkillEffect("energyEfficient");
+}
+
+function getMaxEnergyBonus() {
+  return getSkillEffect("staminaBoost");
+}
+
+function getIncomingPreviewBonus() {
+  return getSkillEffect("previewExtend");
+}
+
+function getEventWarningBonus() {
+  return getSkillEffect("earlyWarning");
+}
+
+function getLowStockThresholdBonus() {
+  return getSkillEffect("lowStockSense");
+}
+
+function getEmergencySupplyMax() {
+  return getSkillEffect("emergencySupply");
 }
 
 function getClerkLevelInfo(clerkLevel) {
@@ -2884,7 +3071,8 @@ function freshState(trainingMode = false) {
   return {
     running: false,
     minute: 0,
-    energy: 100,
+    energy: 100 + getMaxEnergyBonus(),
+    maxEnergy: 100 + getMaxEnergyBonus(),
     sales: 0,
     misses: 0,
     player: { ...level.playerStart },
@@ -2915,6 +3103,7 @@ function freshState(trainingMode = false) {
       warning: null
     },
     warehouseBlocked: false,
+    emergencySupplyUsed: 0,
     _isTraining: trainingMode
   };
 }
@@ -3355,6 +3544,7 @@ function renderClerkBody() {
   const clerkData = loadClerkData();
   const info = getClerkLevelInfo(clerkData.level);
   const nextLvl = getNextClerkLevel(clerkData.level);
+  const availablePoints = clerkData.skillPoints || 0;
 
   let expBarHtml;
   if (nextLvl) {
@@ -3388,24 +3578,94 @@ function renderClerkBody() {
     `;
   }).join('');
 
+  const skillBranchesHtml = Object.entries(skillBranches).map(([branchKey, branch]) => {
+    const skillsHtml = branch.skills.map(skill => {
+      const currentLevel = clerkData.skills[skill.id] || 0;
+      const maxed = currentLevel >= skill.maxLevel;
+      const canUpgrade = availablePoints > 0 && !maxed;
+      const effectText = skill.desc.replace('N', currentLevel * skill.effectPerLevel);
+      return `
+        <div class="skill-card ${currentLevel > 0 ? 'unlocked' : ''}" data-skill-id="${skill.id}">
+          <div class="skill-icon">${skill.icon}</div>
+          <div class="skill-info">
+            <div class="skill-name">
+              ${skill.name}
+              <span class="skill-level">Lv.${currentLevel}/${skill.maxLevel}</span>
+            </div>
+            <div class="skill-desc">${currentLevel > 0 ? effectText : skill.desc.replace('N', skill.effectPerLevel)}</div>
+            <div class="skill-level-dots">
+              ${Array.from({length: skill.maxLevel}, (_, i) => 
+                `<span class="skill-dot ${i < currentLevel ? 'filled' : ''}"></span>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="skill-upgrade-btn ${canUpgrade ? '' : 'disabled'}" 
+                  data-skill-id="${skill.id}" ${canUpgrade ? '' : 'disabled'}>
+            ${maxed ? '已满级' : (canUpgrade ? '升级 (1点)' : '技能点不足')}
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="skill-branch">
+        <div class="skill-branch-header">
+          <span class="skill-branch-icon">${branch.icon}</span>
+          <div>
+            <div class="skill-branch-name">${branch.name}</div>
+            <div class="skill-branch-desc">${branch.desc}</div>
+          </div>
+        </div>
+        <div class="skill-branch-skills">
+          ${skillsHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
   const activeEffects = getUnlockedAbilities();
-  const effectsHtml = activeEffects.length > 0 ? `
-    <div class="clerk-effects">
-      <h4>当前生效能力</h4>
-      ${activeEffects.map(id => {
-        const cl = clerkLevels.find(c => c.ability && c.ability.id === id);
-        if (!cl) return '';
+  const effectsList = [];
+  activeEffects.forEach(id => {
+    const cl = clerkLevels.find(c => c.ability && c.ability.id === id);
+    if (!cl) return;
+    let effectDetail = '';
+    switch (id) {
+      case 'moveSave': effectDetail = '移动消耗体力：0'; break;
+      case 'restockBonus': effectDetail = `补货数量基础：+3件/次${getSkillEffect('restockBoost') > 0 ? '（技能额外+' + getSkillEffect('restockBoost') + '）' : ''}`; break;
+      case 'earlyAlert': effectDetail = `低库存提醒阈值：50%${getSkillEffect('lowStockSense') > 0 ? '（技能额外+' + getSkillEffect('lowStockSense') + '%）' : ''}`; break;
+      case 'dualCarry': effectDetail = '可携带：2箱货物'; break;
+    }
+    effectsList.push(`💡 ${cl.ability.name} — ${effectDetail}`);
+  });
+
+  Object.entries(clerkData.skills || {}).forEach(([skillId, level]) => {
+    if (level <= 0) return;
+    for (const branch of Object.values(skillBranches)) {
+      const skill = branch.skills.find(s => s.id === skillId);
+      if (skill) {
         let effectDetail = '';
-        switch (id) {
-          case 'moveSave': effectDetail = '移动消耗体力：0'; break;
-          case 'restockBonus': effectDetail = '补货数量：+3件/次'; break;
-          case 'earlyAlert': effectDetail = '低库存提醒阈值：50%'; break;
-          case 'dualCarry': effectDetail = '可携带：2箱货物'; break;
+        const effect = level * skill.effectPerLevel;
+        switch (skillId) {
+          case 'restockBoost': effectDetail = `每次补货额外+${effect}件`; break;
+          case 'emergencySupply': effectDetail = `仓库断货时可额外取货${effect}次/事件`; break;
+          case 'energyEfficient': effectDetail = `所有行动体力消耗-${effect}点（最低0）`; break;
+          case 'staminaBoost': effectDetail = `体力上限+${effect}`; break;
+          case 'previewExtend': effectDetail = `顾客入店预告提前${effect}格`; break;
+          case 'earlyWarning': effectDetail = `经营事件预警提前${effect}格`; break;
+          case 'lowStockSense': effectDetail = `低库存提醒阈值+${effect}%`; break;
         }
-        return `<div class="clerk-effect-item">💡 ${cl.ability.name} — ${effectDetail}</div>`;
-      }).join('')}
+        if (effectDetail) effectsList.push(`✨ ${skill.name} (Lv.${level}) — ${effectDetail}`);
+        break;
+      }
+    }
+  });
+
+  const effectsHtml = effectsList.length > 0 ? `
+    <div class="clerk-effects">
+      <h4>当前生效效果</h4>
+      ${effectsList.map(e => `<div class="clerk-effect-item">${e}</div>`).join('')}
     </div>
-  ` : '<div class="clerk-effects"><h4>当前生效能力</h4><div class="clerk-effect-empty">暂无能力，继续努力升级吧！</div></div>';
+  ` : '<div class="clerk-effects"><h4>当前生效效果</h4><div class="clerk-effect-empty">暂无效果，继续努力升级吧！</div></div>';
 
   clerkBodyEl.innerHTML = `
     <div class="clerk-profile">
@@ -3414,13 +3674,35 @@ function renderClerkBody() {
         <div class="clerk-profile-title">${info.title} <span class="clerk-profile-lv">Lv.${info.level}</span></div>
         ${expBarHtml}
       </div>
+      <div class="clerk-skill-points ${availablePoints > 0 ? 'has-points' : ''}">
+        <div class="skill-points-label">技能点</div>
+        <div class="skill-points-value">${availablePoints}</div>
+      </div>
     </div>
     <div class="clerk-abilities">
-      <h4>能力列表</h4>
+      <h4>固定能力（按等级解锁）</h4>
       ${abilitiesHtml}
+    </div>
+    <div class="clerk-skills-section">
+      <h4>技能分支（消耗技能点升级） ${availablePoints > 0 ? `<span class="skill-points-badge">${availablePoints}点可用</span>` : ''}</h4>
+      ${skillBranchesHtml}
     </div>
     ${effectsHtml}
   `;
+
+  clerkBodyEl.querySelectorAll('.skill-upgrade-btn:not(.disabled)').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const skillId = e.currentTarget.dataset.skillId;
+      const result = upgradeSkill(skillId);
+      if (result.success) {
+        addLog(`⬆️ 技能升级成功！`);
+        renderClerkBody();
+        renderClerkBadge();
+      } else {
+        addLog(`⚠️ 技能升级失败：${result.reason}`);
+      }
+    });
+  });
 }
 
 function bindClerkControls() {
@@ -4031,7 +4313,8 @@ function processCustomerQueue() {
   });
   state.customers.incoming = state.customers.incoming.filter(c => c.arrivalTick > currentTick);
 
-  while (state.customers.incoming.length < level.incomingPreview) {
+  const previewCount = level.incomingPreview + getIncomingPreviewBonus();
+  while (state.customers.incoming.length < previewCount) {
     generateIncomingCustomer();
   }
 
@@ -4175,13 +4458,20 @@ function interact() {
   const level = getCurrentLevel();
   const shelf = shelfAt(state.player.x, state.player.y);
   if (state.player.x === level.warehousePos.x && state.player.y === level.warehousePos.y) {
-    if (isWarehouseBlocked()) {
+    const emergencyMax = getEmergencySupplyMax();
+    const warehouseBlocked = isWarehouseBlocked();
+    const canEmergencyUse = warehouseBlocked && emergencyMax > 0 && (state.emergencySupplyUsed || 0) < emergencyMax;
+    if (warehouseBlocked && !canEmergencyUse) {
       addLog("📦 仓库暂时断货，无法取货！请等待仓库恢复。");
     } else if (state.carry.length >= maxCarryCount()) {
       addLog("手上已经拿满了。");
     } else if (state.carry.includes(state.selected)) {
       addLog("已经拿了一箱这种货。");
     } else {
+      if (warehouseBlocked && canEmergencyUse) {
+        state.emergencySupplyUsed = (state.emergencySupplyUsed || 0) + 1;
+        addLog(`🆘 使用应急取货！（剩余 ${emergencyMax - state.emergencySupplyUsed} 次/事件）`);
+      }
       state.carry.push(state.selected);
       spendEnergy(2);
       addLog(`从仓库拿起一箱${goods[state.selected].name}。`);
@@ -4198,7 +4488,7 @@ function interact() {
       } else if (shelf.stock >= shelf.max) {
         addLog(`${shelf.id}货架已经满了。`);
       } else {
-        const restockAmount = hasAbility("restockBonus") ? 3 : 2;
+        const restockAmount = getRestockBonusAmount();
         shelf.stock = Math.min(shelf.max, shelf.stock + restockAmount);
         state.carry.splice(carryIndex, 1);
         spendEnergy(4);
@@ -4215,7 +4505,9 @@ function interact() {
 
 function spendEnergy(amount) {
   const multiplier = getEnergyMultiplier();
-  const actualAmount = Math.ceil(amount * multiplier);
+  const reduction = getEnergyCostReduction();
+  const baseAmount = Math.max(0, amount - reduction);
+  const actualAmount = Math.max(0, Math.ceil(baseAmount * multiplier));
   state.energy = Math.max(0, state.energy - actualAmount);
   updateGoalProgress();
   if (state.energy === 0) {
@@ -4338,6 +4630,10 @@ function finish(reason) {
         break;
       }
     }
+    const levelDiff = newLevel - prevLevel;
+    if (levelDiff > 0) {
+      clerkData.skillPoints = (clerkData.skillPoints || 0) + levelDiff;
+    }
     clerkData.level = newLevel;
     saveClerkData(clerkData);
 
@@ -4346,6 +4642,7 @@ function finish(reason) {
 
     clerkInfo = getClerkLevelInfo(prevLevel);
     nextLvl = getNextClerkLevel(prevLevel);
+    const availablePoints = clerkData.skillPoints || 0;
     expHtml = `
       <div class="result-goals">
         <h3>⬆️ 店员经验</h3>
@@ -4359,6 +4656,8 @@ function finish(reason) {
             <span class="reward-tag">${clerkData.exp}${nextLvl ? ' / ' + nextLvl.expRequired : ' (MAX)'} EXP</span>
           </div>
           ${leveledUp && newAbility && newAbility.ability ? `<div class="result-goal-item success" style="background:#e6f4de;"><span>🎉 解锁新能力：${newAbility.ability.name}</span><span class="reward-tag">${newAbility.ability.desc}</span></div>` : ''}
+          ${leveledUp && levelDiff > 0 ? `<div class="result-goal-item success" style="background:#fff4d6;"><span>⭐ 获得技能点</span><span class="reward-tag">+${levelDiff} 点（可用 ${availablePoints} 点）</span></div>` : ''}
+          ${availablePoints > 0 && !leveledUp ? `<div class="result-goal-item" style="background:#fff8e1;"><span>💡 可用技能点</span><span class="reward-tag">${availablePoints} 点，点击「店员升级」分配</span></div>` : ''}
         </div>
       </div>
     `;
@@ -4612,7 +4911,7 @@ function calculateSchedulingBonus(serviceRate, missed) {
 
 function render() {
   clockEl.textContent = `0${Math.floor(state.minute / 60)}:${String(state.minute % 60).padStart(2, "0")}`;
-  energyEl.textContent = state.energy;
+  energyEl.textContent = `${state.energy}/${state.maxEnergy}`;
   salesEl.textContent = state.sales;
   missesEl.textContent = state.misses;
   carryEl.textContent = state.carry.length > 0 ? state.carry.map(k => goods[k].name).join(" + ") : "空";
@@ -4683,7 +4982,8 @@ function renderBoard() {
           tile.classList.add("shelf");
           isEmpty = false;
           const shelfRatio = Math.round((shelf.stock / shelf.max) * 100);
-          const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
+          const lowThresholdBase = hasAbility("earlyAlert") ? 50 : 35;
+          const lowThreshold = lowThresholdBase + getLowStockThresholdBonus();
           if (shelfRatio <= lowThreshold) tile.classList.add("shelf-low");
           if (isShelfBlocked(shelf)) tile.classList.add("shelf-broken");
           if (isShelfPartialAccess(shelf)) tile.classList.add("shelf-partial");
@@ -4787,7 +5087,8 @@ function renderQueue() {
     empty.textContent = "暂无预告";
     incomingListEl.appendChild(empty);
   } else {
-    sortedIncoming.slice(0, 6).forEach(customer => {
+    const maxPreview = 6 + getIncomingPreviewBonus();
+    sortedIncoming.slice(0, maxPreview).forEach(customer => {
       const good = goods[customer.goodKey];
       const ticksUntil = customer.arrivalTick - currentTick;
       const isHighlight = ticksUntil <= 1;
@@ -4809,7 +5110,8 @@ function renderShelves() {
     const card = document.createElement("div");
     card.className = "shelf-card";
     const ratio = Math.round((shelf.stock / shelf.max) * 100);
-    const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
+    const lowThresholdBase = hasAbility("earlyAlert") ? 50 : 35;
+    const lowThreshold = lowThresholdBase + getLowStockThresholdBonus();
     const blocked = isShelfBlocked(shelf);
     const partial = isShelfPartialAccess(shelf);
     const nameText = blocked
