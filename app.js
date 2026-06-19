@@ -1580,6 +1580,12 @@ const replayRecorder = {
 };
 
 function deepCloneStateForReplay(s) {
+  const shelfStatsClone = {};
+  if (s.sessionShelfStats) {
+    Object.keys(s.sessionShelfStats).forEach(k => {
+      shelfStatsClone[k] = { ...s.sessionShelfStats[k] };
+    });
+  }
   return {
     minute: s.minute,
     energy: s.energy,
@@ -1592,7 +1598,10 @@ function deepCloneStateForReplay(s) {
       stock: sh.stock, max: sh.max, _broken: sh._broken
     })),
     log: [...s.log],
+    salesCount: { ...s.salesCount },
     sessionSalesCount: { ...s.sessionSalesCount },
+    sessionMissCount: { ...s.sessionMissCount },
+    sessionShelfStats: shelfStatsClone,
     goals: s.goals.map(g => ({
       ...g
     })),
@@ -1693,7 +1702,15 @@ function replayApplyFrame(index) {
   state.carry = [...frame.carry];
   state.shelves = frame.shelves.map(sh => ({ ...sh }));
   state.log = [...frame.log];
+  state.salesCount = { ...frame.salesCount };
   state.sessionSalesCount = { ...frame.sessionSalesCount };
+  state.sessionMissCount = { ...frame.sessionMissCount };
+  state.sessionShelfStats = {};
+  if (frame.sessionShelfStats) {
+    Object.keys(frame.sessionShelfStats).forEach(k => {
+      state.sessionShelfStats[k] = { ...frame.sessionShelfStats[k] };
+    });
+  }
   state.goals = frame.goals.map(g => ({ ...g }));
   state.customers = {
     incoming: frame.customers.incoming.map(c => ({ ...c })),
@@ -1830,7 +1847,15 @@ function replayExitMode() {
     state.carry = [...saved.carry];
     state.shelves = saved.shelves.map(sh => ({ ...sh }));
     state.log = [...saved.log];
+    state.salesCount = { ...saved.salesCount };
     state.sessionSalesCount = { ...saved.sessionSalesCount };
+    state.sessionMissCount = { ...saved.sessionMissCount };
+    state.sessionShelfStats = {};
+    if (saved.sessionShelfStats) {
+      Object.keys(saved.sessionShelfStats).forEach(k => {
+        state.sessionShelfStats[k] = { ...saved.sessionShelfStats[k] };
+      });
+    }
     state.goals = saved.goals.map(g => ({ ...g }));
     state.customers = {
       incoming: saved.customers.incoming.map(c => ({ ...c })),
@@ -2300,7 +2325,35 @@ const tutorialSteps = [
 function freshState() {
   const savedSalesCount = localStorage.getItem("codexSalesCount");
   const salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
+  const savedMissCount = localStorage.getItem("codexMissCount");
+  const missCount = savedMissCount ? JSON.parse(savedMissCount) : {};
+  const savedMaxSession = localStorage.getItem("codexMaxSession");
+  const maxSession = savedMaxSession ? JSON.parse(savedMaxSession) : {};
+  const savedShelfStats = localStorage.getItem("codexShelfStats");
+  const shelfStats = savedShelfStats ? JSON.parse(savedShelfStats) : {};
+  const savedLastSession = localStorage.getItem("codexLastSession");
+  const lastSession = savedLastSession ? JSON.parse(savedLastSession) : {};
   const level = getCurrentLevel();
+
+  const goodKeys = getCurrentLevelGoodKeys();
+  const initGoodObj = (defaults, fallback) => {
+    const obj = {};
+    goodKeys.forEach(k => { obj[k] = (defaults && defaults[k]) || fallback; });
+    return obj;
+  };
+
+  const initShelfStats = (defaults) => {
+    const obj = {};
+    goodKeys.forEach(k => { obj[k] = (defaults && defaults[k]) ? { ...defaults[k] } : {}; });
+    return obj;
+  };
+
+  const initLastSession = (defaults) => {
+    const obj = {};
+    goodKeys.forEach(k => { obj[k] = (defaults && defaults[k]) ? { ...defaults[k] } : null; });
+    return obj;
+  };
+
   return {
     running: false,
     minute: 0,
@@ -2312,16 +2365,14 @@ function freshState() {
     selected: getCurrentLevelGoodKeys()[0],
     shelves: level.shelves.map((shelf) => ({ ...shelf, _broken: false })),
     log: ["卷帘门半开，夜班还没开始。"],
-    salesCount: {
-      snack: salesCount.snack || 0,
-      drink: salesCount.drink || 0,
-      noodle: salesCount.noodle || 0
-    },
-    sessionSalesCount: {
-      snack: 0,
-      drink: 0,
-      noodle: 0
-    },
+    salesCount: initGoodObj(salesCount, 0),
+    sessionSalesCount: initGoodObj(null, 0),
+    missCount: initGoodObj(missCount, 0),
+    sessionMissCount: initGoodObj(null, 0),
+    maxSessionSales: initGoodObj(maxSession, 0),
+    shelfStats: initShelfStats(shelfStats),
+    sessionShelfStats: initShelfStats(null),
+    lastSession: initLastSession(lastSession),
     goals: [],
     customers: {
       incoming: [],
@@ -2440,6 +2491,64 @@ function getNextUnlock(goodKey, count) {
   return good.unlockTexts.find((t) => count < t.threshold);
 }
 
+function updateCodexStats() {
+  const goodKeys = Object.keys(goods);
+  const today = new Date().toLocaleDateString('zh-CN');
+
+  goodKeys.forEach(key => {
+    const sessionSales = state.sessionSalesCount[key] || 0;
+    const sessionMisses = state.sessionMissCount[key] || 0;
+
+    if (sessionSales > 0 || sessionMisses > 0) {
+      state.missCount[key] = (state.missCount[key] || 0) + sessionMisses;
+
+      if (sessionSales > (state.maxSessionSales[key] || 0)) {
+        state.maxSessionSales[key] = sessionSales;
+      }
+
+      if (state.sessionShelfStats[key]) {
+        if (!state.shelfStats[key]) state.shelfStats[key] = {};
+        Object.entries(state.sessionShelfStats[key]).forEach(([shelfId, count]) => {
+          state.shelfStats[key][shelfId] = (state.shelfStats[key][shelfId] || 0) + count;
+        });
+      }
+
+      state.lastSession[key] = {
+        sales: sessionSales,
+        misses: sessionMisses,
+        date: today,
+        revenue: sessionSales * goods[key].price
+      };
+    }
+  });
+
+  localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
+  localStorage.setItem("codexMissCount", JSON.stringify(state.missCount));
+  localStorage.setItem("codexMaxSession", JSON.stringify(state.maxSessionSales));
+  localStorage.setItem("codexShelfStats", JSON.stringify(state.shelfStats));
+  localStorage.setItem("codexLastSession", JSON.stringify(state.lastSession));
+}
+
+function getCommonShelves(goodKey, topN = 3) {
+  const stats = state.shelfStats[goodKey] || {};
+  const entries = Object.entries(stats).sort((a, b) => b[1] - a[1]);
+  return entries.slice(0, topN);
+}
+
+function isGoodMastered(goodKey) {
+  const count = state.salesCount[goodKey] || 0;
+  const good = goods[goodKey];
+  const maxThreshold = good.unlockTexts[good.unlockTexts.length - 1]?.threshold || 0;
+  return count >= maxThreshold;
+}
+
+function getGoodStatus(goodKey) {
+  const count = state.salesCount[goodKey] || 0;
+  if (count < 1) return 'locked';
+  if (isGoodMastered(goodKey)) return 'mastered';
+  return 'unlocked';
+}
+
 function openCodex() {
   codexOverlay.classList.remove("hidden");
   codexState.selectedGood = null;
@@ -2456,17 +2565,20 @@ function renderCodexList() {
   codexListEl.innerHTML = "";
   Object.entries(goods).forEach(([key, good]) => {
     const count = state.salesCount[key] || 0;
+    const status = getGoodStatus(key);
     const item = document.createElement("div");
     item.className = `codex-list-item ${codexState.selectedGood === key ? "active" : ""}`;
-    const unlocked = count >= 1;
-    if (!unlocked) {
+    if (status === 'locked') {
       item.classList.add("locked");
+    } else if (status === 'mastered') {
+      item.classList.add("mastered");
     }
+    const statusLabel = status === 'locked' ? '未解锁' : status === 'mastered' ? '满成就' : '已解锁';
     item.innerHTML = `
-      <div class="codex-item-icon">${unlocked ? good.icon : "❓"}</div>
+      <div class="codex-item-icon">${status !== 'locked' ? good.icon : "❓"}</div>
       <div class="codex-item-info">
-        <strong>${unlocked ? good.name : "???"}</strong>
-        <span>累计售出：${count}</span>
+        <strong>${status !== 'locked' ? good.name : "???"}</strong>
+        <span>累计售出：${count} · ${statusLabel}</span>
       </div>
     `;
     item.addEventListener("click", () => {
@@ -2480,52 +2592,180 @@ function renderCodexList() {
 
 function renderCodexDetail(goodKey) {
   if (!goodKey) {
-    codexDetailEl.innerHTML = `<p class="codex-empty">选择左侧商品查看详情</p>`;
+    codexDetailEl.innerHTML = `<p class="codex-empty">选择左侧商品查看经营数据</p>`;
     return;
   }
 
   const good = goods[goodKey];
   const count = state.salesCount[goodKey] || 0;
-  const unlocked = count >= 1;
+  const status = getGoodStatus(goodKey);
+  const unlocked = status !== 'locked';
+  const mastered = status === 'mastered';
   const unlockedTexts = getUnlockedTexts(goodKey, count);
   const nextUnlock = getNextUnlock(goodKey, count);
+  const missCount = state.missCount[goodKey] || 0;
+  const maxSession = state.maxSessionSales[goodKey] || 0;
+  const commonShelves = getCommonShelves(goodKey, 3);
+  const lastSession = state.lastSession[goodKey];
   const compatShelves = getCompatShelves(goodKey);
+
+  const maxThreshold = good.unlockTexts[good.unlockTexts.length - 1]?.threshold || 0;
+  const progress = Math.min(100, Math.round((count / maxThreshold) * 100));
+
+  const statusText = status === 'locked' ? '未解锁' : mastered ? '满成就' : '已解锁';
+
+  const masteredBanner = mastered ? `
+    <div class="codex-mastered-banner">
+      <span class="trophy-icon">🏆</span>恭喜达成满成就！你已经完全掌握了${good.name}的经营之道。
+    </div>
+  ` : '';
+
+  const statsHtml = `
+    <div class="codex-detail-section">
+      <h4><span class="section-icon">📊</span>经营统计</h4>
+      <div class="codex-stats">
+        <div class="codex-stat">
+          <span class="codex-stat-label">累计销量</span>
+          <span class="codex-stat-value">${count} 件</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">历史缺货次数</span>
+          <span class="codex-stat-value">${missCount} 次</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">最高单局销量</span>
+          <span class="codex-stat-value">${maxSession} 件</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">售价</span>
+          <span class="codex-stat-value">¥${good.price}</span>
+        </div>
+      </div>
+      <div class="codex-progress-bar">
+        <div class="codex-progress-fill ${mastered ? 'mastered' : ''}" style="width: ${progress}%"></div>
+      </div>
+    </div>
+  `;
+
+  const lockedStatsHtml = `
+    <div class="codex-detail-section">
+      <h4><span class="section-icon">📊</span>经营统计</h4>
+      <div class="codex-stats">
+        <div class="codex-stat">
+          <span class="codex-stat-label">累计销量</span>
+          <span class="codex-stat-value">--</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">历史缺货次数</span>
+          <span class="codex-stat-value">--</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">最高单局销量</span>
+          <span class="codex-stat-value">--</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">售价</span>
+          <span class="codex-stat-value">¥${good.price}</span>
+        </div>
+      </div>
+      <p class="codex-hint" style="margin-top: 8px;">卖出 1 件即可解锁完整经营数据。</p>
+    </div>
+  `;
+
+  let shelfHtml = '';
+  if (unlocked) {
+    const hasCommonData = commonShelves.length > 0;
+    shelfHtml = `
+      <div class="codex-detail-section">
+        <h4><span class="section-icon">🏪</span>常见适配货架</h4>
+        ${hasCommonData ? `
+          <div class="codex-shelf-list">
+            ${commonShelves.map(([shelfId, shelfCount], idx) => `
+              <span class="codex-shelf-tag ${idx === 0 ? 'common' : ''}">
+                ${shelfId}
+                <span class="tag-count">${shelfCount}件</span>
+              </span>
+            `).join('')}
+          </div>
+        ` : `
+          <p class="codex-hint">暂无历史货架数据，多营业几晚记录数据吧。</p>
+        `}
+      </div>
+    `;
+  }
+
+  let performanceHtml = '';
+  if (unlocked) {
+    if (lastSession) {
+      const total = lastSession.sales + lastSession.misses;
+      const rate = total > 0 ? Math.round((lastSession.sales / total) * 100) : 100;
+      let perfClass = 'good';
+      if (rate < 50) perfClass = 'poor';
+      else if (rate < 80) perfClass = 'average';
+
+      performanceHtml = `
+        <div class="codex-detail-section">
+          <h4><span class="section-icon">📈</span>最近一局表现</h4>
+          <div class="codex-performance-card ${perfClass}">
+            <div class="codex-performance-header">
+              <span class="codex-performance-title">${lastSession.date} 夜班</span>
+              <span class="codex-performance-date">完成率 ${rate}%</span>
+            </div>
+            <div class="codex-performance-stats">
+              <div class="codex-performance-stat">
+                <span class="codex-performance-stat-label">销量</span>
+                <span class="codex-performance-stat-value">${lastSession.sales} 件</span>
+              </div>
+              <div class="codex-performance-stat">
+                <span class="codex-performance-stat-label">缺货</span>
+                <span class="codex-performance-stat-value">${lastSession.misses} 次</span>
+              </div>
+              <div class="codex-performance-stat">
+                <span class="codex-performance-stat-label">营业额</span>
+                <span class="codex-performance-stat-value">¥${lastSession.revenue}</span>
+              </div>
+              <div class="codex-performance-stat">
+                <span class="codex-performance-stat-label">缺货影响</span>
+                <span class="codex-performance-stat-value">-${lastSession.misses * good.missPenalty} 分</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      performanceHtml = `
+        <div class="codex-detail-section">
+          <h4><span class="section-icon">📈</span>最近一局表现</h4>
+          <p class="codex-hint">暂无最近一局数据，完成一局营业后查看。</p>
+        </div>
+      `;
+    }
+  }
+
+  const unlocksHtml = `
+    <div class="codex-detail-section">
+      <h4><span class="section-icon">📝</span>经营手记</h4>
+      ${unlockedTexts.length > 0 ? unlockedTexts.map((t) => `<div class="codex-unlock-item unlocked">✓ ${t.text}</div>`).join("") : ""}
+      ${nextUnlock ? `<div class="codex-unlock-item next">还差 ${nextUnlock.threshold - count} 件解锁：${nextUnlock.text}</div>` : `<div class="codex-unlock-item max">已解锁全部手记！</div>`}
+    </div>
+  `;
 
   codexDetailEl.innerHTML = `
     <div class="codex-detail-header">
-      <div class="codex-detail-icon ${!unlocked ? 'locked' : ''}">${unlocked ? good.icon : '❓'}</div>
+      <div class="codex-detail-icon ${!unlocked ? 'locked' : ''} ${mastered ? 'mastered' : ''}">${unlocked ? good.icon : '❓'}</div>
       <div>
-        <h3 class="${!unlocked ? 'locked-text' : ''}">${unlocked ? good.name : '???'}</h3>
-        ${unlocked ? `<p class="codex-desc">${good.desc}</p>` : `<p class="codex-hint">还没卖过这件商品，卖出 1 件即可解锁商品介绍。</p>`}
+        <h3 class="${!unlocked ? 'locked-text' : ''}">
+          ${unlocked ? good.name : '???'}
+          <span class="codex-status-badge ${status}">${statusText}</span>
+        </h3>
+        ${unlocked ? `<p class="codex-desc">${good.desc}</p>` : `<p class="codex-hint">还没卖过这件商品，卖出 1 件即可解锁商品介绍和经营数据。</p>`}
       </div>
     </div>
-    <div class="codex-stats">
-      <div class="codex-stat">
-        <span class="codex-stat-label">售价</span>
-        <span class="codex-stat-value">¥${good.price}</span>
-      </div>
-      <div class="codex-stat">
-        <span class="codex-stat-label">适配货架</span>
-        <span class="codex-stat-value">${compatShelves}</span>
-      </div>
-      <div class="codex-stat">
-        <span class="codex-stat-label">补货收益</span>
-        <span class="codex-stat-value">+${good.restockGain} 件/次</span>
-      </div>
-      <div class="codex-stat">
-        <span class="codex-stat-label">缺货影响</span>
-        <span class="codex-stat-value">-${good.missPenalty} 评分</span>
-      </div>
-      <div class="codex-stat full">
-        <span class="codex-stat-label">累计销量</span>
-        <span class="codex-stat-value">${count} 件</span>
-      </div>
-    </div>
-    <div class="codex-unlocks">
-      <h4>解锁记录</h4>
-      ${unlockedTexts.length > 0 ? unlockedTexts.map((t) => `<div class="codex-unlock-item unlocked">✓ ${t.text}</div>`).join("") : ""}
-      ${nextUnlock ? `<div class="codex-unlock-item next">还差 ${nextUnlock.threshold - count} 件解锁：${nextUnlock.text}</div>` : `<div class="codex-unlock-item max">已解锁全部记录！</div>`}
-    </div>
+    ${masteredBanner}
+    ${unlocked ? statsHtml : lockedStatsHtml}
+    ${shelfHtml}
+    ${performanceHtml}
+    ${unlocked ? unlocksHtml : ''}
   `;
 }
 
@@ -3227,6 +3467,7 @@ function processCustomerQueue() {
     } else {
       state.misses += 1;
       state.customers.missedCount += 1;
+      state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       recordActualCustomer(customer.goodKey, currentTick, false);
       addLog(`👥 店内太拥挤，顾客#${customer.id}直接离开，计入缺货！`);
     }
@@ -3247,6 +3488,7 @@ function processCustomerQueue() {
       if (customer.waited >= customer.maxWait) {
         state.misses += 1;
         state.customers.missedCount += 1;
+        state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
         recordActualCustomer(customer.goodKey, currentTick, false);
         const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
         if (shelf) {
@@ -3308,6 +3550,8 @@ function tryServeCustomer(customer) {
     state.salesCount[shelf.good] = prevCount + 1;
     const prevSessionCount = state.sessionSalesCount[shelf.good] || 0;
     state.sessionSalesCount[shelf.good] = prevSessionCount + 1;
+    if (!state.sessionShelfStats[shelf.good]) state.sessionShelfStats[shelf.good] = {};
+    state.sessionShelfStats[shelf.good][shelf.id] = (state.sessionShelfStats[shelf.good][shelf.id] || 0) + 1;
     addLog(`✅ 顾客#${customer.id}买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
 
     if (!codexOverlay.classList.contains("hidden")) {
@@ -3444,6 +3688,7 @@ function finish(reason) {
     state.customers.waiting.forEach(customer => {
       state.misses += 1;
       state.customers.missedCount += 1;
+      state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       recordActualCustomer(customer.goodKey, currentTick, false);
       const good = goods[customer.goodKey];
       addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
@@ -3451,7 +3696,7 @@ function finish(reason) {
     state.customers.waiting = [];
   }
 
-  localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
+  updateCodexStats();
 
   endActiveEventsForClosing();
   evaluateEndGoals();
