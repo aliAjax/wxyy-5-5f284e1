@@ -1312,15 +1312,20 @@ function confirmApplyScheme() {
     closeApplySchemeDialog();
     return;
   }
-  const newShelves = scheme.shelves.map(s => ({
-    id: s.id,
-    x: s.x,
-    y: s.y,
-    good: s.good,
-    stock: 0,
-    max: s.max,
-    _broken: false
-  }));
+  const newShelves = scheme.shelves.map(s => {
+    const currentShelf = state.shelves.find(existing => existing.id === s.id);
+    const levelShelf = level.shelves.find(existing => existing.id === s.id);
+    const stockSource = currentShelf || levelShelf || {};
+    return {
+      id: s.id,
+      x: s.x,
+      y: s.y,
+      good: s.good,
+      stock: stockSource.stock || 0,
+      max: s.max,
+      _broken: Boolean(stockSource._broken)
+    };
+  });
   state.shelves = newShelves;
   schemeState.activeSchemeId = scheme.id;
   editor.selectedShelfId = null;
