@@ -189,6 +189,28 @@
     </div>
   </div>
 
+  <div id="schedulingOverlay" class="scheduling-overlay hidden">
+    <div class="scheduling-dialog">
+      <div class="scheduling-header">
+        <h2>🧠 智能排班挑战</h2>
+        <p>选择今晚的客流策略，系统将据此预生成一整晚的需求曲线。你只能看到大致风险，无法预知每一次购买。</p>
+      </div>
+      <div id="strategyCards" class="strategy-cards"></div>
+      <div id="schedulingPreview" class="scheduling-preview hidden">
+        <h3>📊 风险预览</h3>
+        <div class="preview-summary" id="previewSummary"></div>
+        <div class="preview-curve" id="previewCurve"></div>
+        <div class="preview-goods" id="previewGoods"></div>
+        <div class="preview-tips" id="previewTips"></div>
+      </div>
+      <div class="scheduling-actions">
+        <button id="schedulingSkipBtn" class="secondary" type="button" style="margin:0;flex:1;">🎲 跳过，随机模式</button>
+        <button id="schedulingBackBtn" class="secondary hidden" type="button" style="margin:0;flex:1;">← 重新选择</button>
+        <button id="schedulingStartBtn" class="primary hidden" type="button" style="margin:0;flex:2;">🚀 接受挑战，开始营业</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

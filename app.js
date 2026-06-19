@@ -149,6 +149,17 @@ const clerkOverlay = document.getElementById("clerkOverlay");
 const clerkCloseBtn = document.getElementById("clerkCloseBtn");
 const clerkBodyEl = document.getElementById("clerkBody");
 
+const schedulingOverlay = document.getElementById("schedulingOverlay");
+const strategyCardsEl = document.getElementById("strategyCards");
+const schedulingPreviewEl = document.getElementById("schedulingPreview");
+const previewSummaryEl = document.getElementById("previewSummary");
+const previewCurveEl = document.getElementById("previewCurve");
+const previewGoodsEl = document.getElementById("previewGoods");
+const previewTipsEl = document.getElementById("previewTips");
+const schedulingBackBtn = document.getElementById("schedulingBackBtn");
+const schedulingStartBtn = document.getElementById("schedulingStartBtn");
+const schedulingSkipBtn = document.getElementById("schedulingSkipBtn");
+
 const editorBanner = document.getElementById("editorBanner");
 const editorPanel = document.getElementById("editorPanel");
 const editorSelectedInfo = document.getElementById("editorSelectedInfo");
@@ -249,6 +260,192 @@ const eventTemplates = {
       start: "💤 突发：深夜困倦袭来，移动、拿货、补货的体力消耗全部翻倍！",
       end: "✅ 一阵冷风让你清醒过来，体力消耗恢复正常。"
     }
+  }
+};
+
+const STRATEGY_TEMPLATES = {
+  steady: {
+    id: "steady",
+    name: "平稳客流",
+    icon: "🌙",
+    difficulty: "简单",
+    difficultyLevel: 1,
+    desc: "顾客均匀进店，节奏平缓，适合新手熟悉排班逻辑。",
+    tags: [{ label: "低风险", level: "easy" }, { label: "可预测", level: "easy" }],
+    generateCurve: (totalTicks, goodKeys) => {
+      const curve = [];
+      for (let t = 0; t < totalTicks; t++) {
+        const progress = t / totalTicks;
+        let intensity = 1.0;
+        if (progress < 0.1) intensity = 0.7 + progress * 3;
+        else if (progress > 0.85) intensity = 1.0 - (progress - 0.85) * 4;
+        curve.push({
+          tick: t,
+          intensity: Math.max(0.4, intensity + (Math.random() - 0.5) * 0.3),
+          goodWeights: generateBalancedWeights(goodKeys, 0.2)
+        });
+      }
+      return curve;
+    },
+    tips: [
+      "客流基本稳定，按常规节奏补货即可",
+      "注意货架不要空置超过一半",
+      "体力消耗均匀，可稳步推进"
+    ]
+  },
+  rushHour: {
+    id: "rushHour",
+    name: "下班高峰",
+    icon: "🚶",
+    difficulty: "中等",
+    difficultyLevel: 2,
+    desc: "前半场冷清，中段突然涌入大量顾客，需要提前备货。",
+    tags: [{ label: "波峰明显", level: "medium" }, { label: "考验预判", level: "medium" }],
+    generateCurve: (totalTicks, goodKeys) => {
+      const curve = [];
+      const peakStart = Math.floor(totalTicks * 0.3);
+      const peakEnd = Math.floor(totalTicks * 0.65);
+      const peakCenter = (peakStart + peakEnd) / 2;
+      for (let t = 0; t < totalTicks; t++) {
+        let intensity;
+        if (t < peakStart) {
+          intensity = 0.5 + (t / peakStart) * 0.3;
+        } else if (t > peakEnd) {
+          const decay = (t - peakEnd) / (totalTicks - peakEnd);
+          intensity = 1.0 - decay * 0.5;
+        } else {
+          const dist = Math.abs(t - peakCenter) / ((peakEnd - peakStart) / 2);
+          intensity = 1.8 - dist * 0.6;
+        }
+        intensity += (Math.random() - 0.5) * 0.25;
+        const weights = {};
+        if (t >= peakStart && t <= peakEnd) {
+          weights[goodKeys[0]] = 0.8 + Math.random() * 0.3;
+          weights[goodKeys[1]] = 1.2 + Math.random() * 0.4;
+          weights[goodKeys[2 % goodKeys.length]] = 1.0 + Math.random() * 0.2;
+        } else {
+          Object.assign(weights, generateBalancedWeights(goodKeys, 0.15));
+        }
+        curve.push({
+          tick: t,
+          intensity: Math.max(0.4, intensity),
+          goodWeights: weights
+        });
+      }
+      return curve;
+    },
+    tips: [
+      "高峰大约在营业时间中段（30%~65%）到来",
+      "高峰前提前给所有货架补满库存",
+      "热饮在高峰期间需求特别旺盛"
+    ]
+  },
+  randomBurst: {
+    id: "randomBurst",
+    name: "随机爆单",
+    icon: "⚡",
+    difficulty: "困难",
+    difficultyLevel: 3,
+    desc: "客流极度不稳定，随时可能出现几波不可预测的爆单潮。",
+    tags: [{ label: "高波动", level: "hard" }, { label: "考验应急", level: "hard" }],
+    generateCurve: (totalTicks, goodKeys) => {
+      const curve = [];
+      const burstCount = 2 + Math.floor(Math.random() * 2);
+      const burstPositions = [];
+      for (let i = 0; i < burstCount; i++) {
+        burstPositions.push(Math.floor(totalTicks * (0.2 + (i / burstCount) * 0.6 + (Math.random() - 0.5) * 0.1)));
+      }
+      const burstWidth = Math.max(2, Math.floor(totalTicks * 0.08));
+      for (let t = 0; t < totalTicks; t++) {
+        let intensity = 0.6 + Math.random() * 0.3;
+        for (const pos of burstPositions) {
+          const dist = Math.abs(t - pos);
+          if (dist < burstWidth) {
+            const boost = (1 - dist / burstWidth) * 1.6;
+            intensity += boost;
+          }
+        }
+        const weights = {};
+        goodKeys.forEach(key => {
+          weights[key] = 0.6 + Math.random() * 1.2;
+        });
+        curve.push({
+          tick: t,
+          intensity: Math.max(0.4, Math.min(2.5, intensity)),
+          goodWeights: weights
+        });
+      }
+      return curve;
+    },
+    tips: [
+      "爆单点不可预测，保持货架始终有安全库存",
+      "每次补货尽量补满，不要只补1-2件",
+      "体力要预留，不要在前期耗尽"
+    ]
+  },
+  preferenceShift: {
+    id: "preferenceShift",
+    name: "商品偏好波动",
+    icon: "📊",
+    difficulty: "困难",
+    difficultyLevel: 3,
+    desc: "总客流量平稳，但不同时段的热门商品会剧烈切换。",
+    tags: [{ label: "偏好漂移", level: "hard" }, { label: "考验选品", level: "hard" }],
+    generateCurve: (totalTicks, goodKeys) => {
+      const curve = [];
+      const phaseCount = 3 + Math.floor(Math.random() * 2);
+      const phaseLength = Math.floor(totalTicks / phaseCount);
+      for (let t = 0; t < totalTicks; t++) {
+        const phase = Math.min(phaseCount - 1, Math.floor(t / phaseLength));
+        const phaseProgress = (t % phaseLength) / phaseLength;
+        const baseIntensity = 0.85 + (Math.random() - 0.5) * 0.2;
+        const weights = {};
+        const favoredIndex = phase % goodKeys.length;
+        const nextFavoredIndex = (phase + 1) % goodKeys.length;
+        goodKeys.forEach((key, idx) => {
+          if (idx === favoredIndex) {
+            weights[key] = 1.8 - phaseProgress * 0.8 + (Math.random() - 0.5) * 0.2;
+          } else if (idx === nextFavoredIndex) {
+            weights[key] = 0.8 + phaseProgress * 1.0 + (Math.random() - 0.5) * 0.2;
+          } else {
+            weights[key] = 0.5 + Math.random() * 0.3;
+          }
+        });
+        curve.push({
+          tick: t,
+          intensity: baseIntensity,
+          goodWeights: weights
+        });
+      }
+      return curve;
+    },
+    tips: [
+      "热门商品会周期性切换，观察进店顾客的购买倾向",
+      "当某商品突然热销时，优先给对应货架补货",
+      "不要把所有体力投入单一商品，保持灵活"
+    ]
+  }
+};
+
+function generateBalancedWeights(goodKeys, variance) {
+  const weights = {};
+  goodKeys.forEach(key => {
+    weights[key] = 1.0 + (Math.random() - 0.5) * variance * 2;
+  });
+  return weights;
+}
+
+const schedulingState = {
+  active: false,
+  selectedStrategy: null,
+  generatedCurve: null,
+  previewData: null,
+  expectedStats: null,
+  actualStats: {
+    customersByTick: [],
+    demandByGood: {},
+    totalServed: 0,
+    totalMissed: 0
   }
 };
 
@@ -1929,6 +2126,7 @@ function init() {
   bindClerkControls();
   bindEditorControls();
   bindReplayControls();
+  bindSchedulingControls();
   updateEditorUI();
   updateReplayButtonState();
   render();
@@ -1957,7 +2155,7 @@ function bindControls() {
       startGame();
       checkTutorialAction("startGame");
     } else {
-      startGame();
+      openSchedulingChallenge();
     }
   });
   changeLevelBtn.addEventListener("click", () => {
@@ -2259,6 +2457,15 @@ function startGame() {
     servedCount: 0,
     missedCount: 0
   };
+
+  if (schedulingState.active && schedulingState.selectedStrategy) {
+    const strategy = STRATEGY_TEMPLATES[schedulingState.selectedStrategy];
+    if (strategy) {
+      addLog(`🧠 排班挑战已激活：${strategy.icon} ${strategy.name}（${strategy.difficulty}）`);
+      addLog(`   提示：${strategy.tips[0]}`);
+    }
+  }
+
   for (let i = 0; i < level.incomingPreview; i++) {
     generateIncomingCustomer();
   }
@@ -2281,6 +2488,17 @@ function resetGame() {
   resetAllEventEffects();
   state = freshState();
   resultEl.classList.add("hidden");
+  schedulingState.active = false;
+  schedulingState.selectedStrategy = null;
+  schedulingState.generatedCurve = null;
+  schedulingState.previewData = null;
+  schedulingState.expectedStats = null;
+  schedulingState.actualStats = {
+    customersByTick: [],
+    demandByGood: {},
+    totalServed: 0,
+    totalMissed: 0
+  };
   if (tutorial.active) {
     tutorial.active = false;
     tutorial.waitingForAction = false;
@@ -2315,10 +2533,16 @@ function tick() {
 function generateIncomingCustomer() {
   const level = getCurrentLevel();
   const goodKeys = getCurrentLevelGoodKeys();
+  const currentTick = Math.floor(state.minute / 5);
+  const curveSegment = getCurveSegmentForTick(currentTick);
+  const useCurve = schedulingState.active && curveSegment !== null;
 
   const weightedKeys = [];
   goodKeys.forEach(key => {
-    const multiplier = getGoodDemandMultiplier(key);
+    let multiplier = getGoodDemandMultiplier(key);
+    if (useCurve && curveSegment.goodWeights[key] !== undefined) {
+      multiplier *= curveSegment.goodWeights[key];
+    }
     const weight = Math.round(multiplier * 10);
     for (let i = 0; i < weight; i++) {
       weightedKeys.push(key);
@@ -2328,9 +2552,22 @@ function generateIncomingCustomer() {
 
   const lastArrival = state.customers.incoming.length > 0
     ? state.customers.incoming[state.customers.incoming.length - 1].arrivalTick
-    : Math.floor(state.minute / 5);
-  const baseGap = Math.max(1, level.customerBaseGap - Math.floor(state.minute / 40));
-  const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * level.customerRandomRange);
+    : currentTick;
+
+  let baseGap;
+  if (useCurve) {
+    const intensity = curveSegment.intensity;
+    const baseGapRaw = level.customerBaseGap / Math.max(0.5, intensity);
+    baseGap = Math.max(1, Math.round(baseGapRaw));
+  } else {
+    baseGap = Math.max(1, level.customerBaseGap - Math.floor(state.minute / 40));
+  }
+
+  const randomRange = useCurve
+    ? Math.max(1, Math.floor(level.customerRandomRange * 0.8))
+    : level.customerRandomRange;
+
+  const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * randomRange);
   state.customers.incoming.push({
     id: state.customers.nextId++,
     goodKey: goodKey,
@@ -2359,6 +2596,7 @@ function processCustomerQueue() {
     } else {
       state.misses += 1;
       state.customers.missedCount += 1;
+      recordActualCustomer(customer.goodKey, currentTick, false);
       addLog(`👥 店内太拥挤，顾客#${customer.id}直接离开，计入缺货！`);
     }
   });
@@ -2378,6 +2616,7 @@ function processCustomerQueue() {
       if (customer.waited >= customer.maxWait) {
         state.misses += 1;
         state.customers.missedCount += 1;
+        recordActualCustomer(customer.goodKey, currentTick, false);
         const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
         if (shelf) {
           addLog(`😠 顾客#${customer.id}等了太久，${shelf.id}货架缺${goods[customer.goodKey].name}，愤怒离开！`);
@@ -2403,6 +2642,7 @@ function pickBestShelfForGood(goodKey) {
 }
 
 function tryServeCustomer(customer) {
+  const currentTick = Math.floor(state.minute / 5);
   const shelf = customer.targetShelfId
     ? state.shelves.find(s => s.id === customer.targetShelfId)
     : pickBestShelfForGood(customer.goodKey);
@@ -2432,6 +2672,7 @@ function tryServeCustomer(customer) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
     state.customers.servedCount += 1;
+    recordActualCustomer(customer.goodKey, currentTick, true);
     const prevCount = state.salesCount[shelf.good] || 0;
     state.salesCount[shelf.good] = prevCount + 1;
     const prevSessionCount = state.sessionSalesCount[shelf.good] || 0;
@@ -2565,12 +2806,14 @@ function finish(reason) {
   clearInterval(timer);
   timer = null;
 
+  const currentTick = Math.floor(state.minute / 5);
   const remaining = state.customers.waiting.length;
   if (remaining > 0) {
     addLog(`🌙 打烊时间到！店内还有 ${remaining} 位顾客未买到商品，全部计入缺货。`);
     state.customers.waiting.forEach(customer => {
       state.misses += 1;
       state.customers.missedCount += 1;
+      recordActualCustomer(customer.goodKey, currentTick, false);
       const good = goods[customer.goodKey];
       addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
     });
@@ -2583,11 +2826,17 @@ function finish(reason) {
   evaluateEndGoals();
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
+  let schedulingBonus = 0;
   const finalScore = baseScore + goalsBonus;
   const served = state.customers.servedCount;
   const missed = state.customers.missedCount;
   const total = served + missed;
   const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+
+  const schedulingComparisonHtml = generateSchedulingComparisonHtml();
+  if (schedulingState.active && schedulingState.selectedStrategy) {
+    schedulingBonus = calculateSchedulingBonus(serviceRate, missed);
+  }
 
   const goalsHtml = state.goals.length > 0 ? `
     <div class="result-goals">
@@ -2626,7 +2875,8 @@ function finish(reason) {
 
   const clerkData = loadClerkData();
   const prevLevel = clerkData.level;
-  const expGained = Math.max(10, Math.floor(finalScore * 0.3));
+  const totalFinalScore = finalScore + schedulingBonus;
+  const expGained = Math.max(10, Math.floor(totalFinalScore * 0.3));
   clerkData.exp += expGained;
 
   let newLevel = 1;
@@ -2686,10 +2936,11 @@ function finish(reason) {
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
     ${statsHtml}
+    ${schedulingComparisonHtml}
     ${goalsHtml}
     ${eventsHtml}
     ${expHtml}
-    <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${finalScore}</strong>${goalsBonus > 0 ? `（含目标奖励 +${goalsBonus}）` : ''}</p>
+    <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${totalFinalScore}</strong>（基础 ${baseScore} + 目标奖励 +${goalsBonus}${schedulingBonus > 0 ? ' + 排班奖励 +' + schedulingBonus : ''}）</p>
     <div style="margin-top: 16px; display: flex; gap: 10px;">
       <button id="resultReplayBtn" class="primary" type="button" style="margin: 0; flex: 1;">🎬 查看本局回放</button>
       <button id="resultRestartBtn" class="secondary" type="button" style="margin: 0; flex: 1;">🔄 重新开始</button>
@@ -2717,11 +2968,123 @@ function finish(reason) {
     });
   }
 
-  addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}，最终评分${finalScore}。获得${expGained}经验。${leveledUp ? '🎉 升级到' + clerkLevels.find(cl => cl.level === newLevel).title + '！' : ''}`);
+  addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}${schedulingBonus > 0 ? '，排班奖励+' + schedulingBonus : ''}，最终评分${totalFinalScore}。获得${expGained}经验。${leveledUp ? '🎉 升级到' + clerkLevels.find(cl => cl.level === newLevel).title + '！' : ''}`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
     checkTutorialAction("finish");
   }
+}
+
+function generateSchedulingComparisonHtml() {
+  if (!schedulingState.active || !schedulingState.selectedStrategy || !schedulingState.expectedStats) {
+    return '';
+  }
+  const strategy = STRATEGY_TEMPLATES[schedulingState.selectedStrategy];
+  const expected = schedulingState.expectedStats;
+  const actual = schedulingState.actualStats;
+  const goodKeys = getCurrentLevelGoodKeys();
+
+  const actualTotal = (actual.totalServed || 0) + (actual.totalMissed || 0);
+  const expectedTotal = expected.totalExpectedCustomers;
+  const totalDiff = actualTotal - expectedTotal;
+  const totalMatch = expectedTotal > 0 ? Math.round((1 - Math.abs(totalDiff) / expectedTotal) * 100) : 100;
+  let totalMatchClass = totalMatch >= 80 ? 'good' : totalMatch >= 60 ? 'ok' : 'bad';
+
+  let goodsRows = '';
+  goodKeys.forEach(key => {
+    const good = goods[key];
+    const expectedDemand = expected.expectedDemandByGood[key] || 0;
+    const actualDemand = actual.demandByGood[key] || 0;
+    const diff = actualDemand - expectedDemand;
+    const demandMatch = expectedDemand > 0 ? Math.round((1 - Math.abs(diff) / expectedDemand) * 100) : 100;
+    let demandMatchClass = demandMatch >= 75 ? 'good' : demandMatch >= 50 ? 'ok' : 'bad';
+    const isOver = diff > 0;
+    goodsRows += `
+      <tr>
+        <td>${good.icon} ${good.name}</td>
+        <td class="comparison-expected">约 ${expectedDemand} 份</td>
+        <td class="comparison-actual ${isOver ? 'over' : ''}">${actualDemand} 份 ${diff !== 0 ? `(${diff > 0 ? '+' : ''}${diff})` : ''}</td>
+        <td><span class="comparison-match ${demandMatchClass}">${demandMatch}%</span></td>
+      </tr>
+    `;
+  });
+
+  let actualPeakCustomers = 0;
+  let expectedPeakIntensity = 0;
+  if (schedulingState.generatedCurve) {
+    schedulingState.generatedCurve.forEach(seg => {
+      if (seg.intensity > expectedPeakIntensity) expectedPeakIntensity = seg.intensity;
+    });
+  }
+  if (actual.customersByTick && actual.customersByTick.length > 0) {
+    actualPeakCustomers = Math.max(...actual.customersByTick);
+  }
+
+  const level = getCurrentLevel();
+  const actualMaxWait = level.maxWaiting;
+  const peakHandled = actualPeakCustomers <= actualMaxWait * 0.8;
+
+  return `
+    <div class="scheduling-comparison" style="background:#faf5e0; border-color:#c4b27a;">
+      <h3 style="color:#7a5a10;">🧠 排班挑战 · 预期 vs 实际（${strategy.icon} ${strategy.name}）</h3>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>预期值</th>
+            <th>实际值</th>
+            <th>匹配度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>👥 总到访顾客</td>
+            <td class="comparison-expected">约 ${expectedTotal} 位</td>
+            <td class="comparison-actual ${totalDiff > 0 ? 'over' : ''}">${actualTotal} 位 ${totalDiff !== 0 ? `(${totalDiff > 0 ? '+' : ''}${totalDiff})` : ''}</td>
+            <td><span class="comparison-match ${totalMatchClass}">${totalMatch}%</span></td>
+          </tr>
+          <tr>
+            <td>⚡ 客流强度峰值</td>
+            <td class="comparison-expected">${expectedPeakIntensity.toFixed(1)}x</td>
+            <td class="comparison-actual">单格 ${actualPeakCustomers} 人</td>
+            <td><span class="comparison-match ${peakHandled ? 'good' : 'bad'}">${peakHandled ? '从容应对' : '超出承载'}</span></td>
+          </tr>
+          <tr>
+            <td>😠 流失顾客</td>
+            <td class="comparison-expected">-</td>
+            <td class="comparison-actual ${actual.totalMissed > 3 ? 'over' : ''}">${actual.totalMissed || 0} 位</td>
+            <td><span class="comparison-match ${(actual.totalMissed || 0) <= 2 ? 'good' : (actual.totalMissed || 0) <= 5 ? 'ok' : 'bad'}">${(actual.totalMissed || 0) <= 2 ? '优秀' : (actual.totalMissed || 0) <= 5 ? '合格' : '不足'}</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <h4 style="margin:14px 0 8px; color:#7a5a10; font-size:14px;">📦 商品需求对比</h4>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>商品</th>
+            <th>预期需求</th>
+            <th>实际需求</th>
+            <th>匹配度</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${goodsRows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function calculateSchedulingBonus(serviceRate, missed) {
+  let bonus = 0;
+  const strategy = STRATEGY_TEMPLATES[schedulingState.selectedStrategy];
+  if (!strategy) return 0;
+  const difficultyMult = strategy.difficultyLevel;
+  if (serviceRate >= 85) bonus += 30 * difficultyMult;
+  else if (serviceRate >= 70) bonus += 15 * difficultyMult;
+  if (missed === 0) bonus += 20 * difficultyMult;
+  else if (missed <= 2) bonus += 10 * difficultyMult;
+  return bonus;
 }
 
 function render() {
@@ -3004,6 +3367,284 @@ function renderGoals() {
   });
 }
 
+function openSchedulingChallenge() {
+  if (state.running) {
+    addLog("游戏进行中无法选择排班策略，请先结束或重新开始。");
+    return;
+  }
+  schedulingState.active = false;
+  schedulingState.selectedStrategy = null;
+  schedulingState.generatedCurve = null;
+  schedulingState.previewData = null;
+  schedulingState.expectedStats = null;
+  renderStrategyCards();
+  schedulingPreviewEl.classList.add("hidden");
+  schedulingBackBtn.classList.add("hidden");
+  schedulingStartBtn.classList.add("hidden");
+  schedulingSkipBtn.classList.remove("hidden");
+  strategyCardsEl.classList.remove("hidden");
+  schedulingOverlay.classList.remove("hidden");
+}
+
+function closeSchedulingOverlay() {
+  schedulingOverlay.classList.add("hidden");
+}
+
+function renderStrategyCards() {
+  strategyCardsEl.innerHTML = "";
+  Object.values(STRATEGY_TEMPLATES).forEach(strategy => {
+    const isSelected = schedulingState.selectedStrategy === strategy.id;
+    const card = document.createElement("div");
+    card.className = `strategy-card ${isSelected ? "selected" : ""}`;
+    card.innerHTML = `
+      <div class="strategy-card-header">
+        <div class="strategy-icon">${strategy.icon}</div>
+        <div class="strategy-info">
+          <h3>${strategy.name}</h3>
+          <div class="difficulty">难度：${strategy.difficulty}</div>
+        </div>
+      </div>
+      <p class="strategy-desc">${strategy.desc}</p>
+      <div class="strategy-tags">
+        ${strategy.tags.map(tag => `<span class="strategy-tag ${tag.level}">${tag.label}</span>`).join("")}
+      </div>
+    `;
+    card.addEventListener("click", () => selectStrategy(strategy.id));
+    strategyCardsEl.appendChild(card);
+  });
+}
+
+function selectStrategy(strategyId) {
+  schedulingState.active = true;
+  schedulingState.selectedStrategy = strategyId;
+  renderStrategyCards();
+  const strategy = STRATEGY_TEMPLATES[strategyId];
+  if (!strategy) return;
+  const level = getCurrentLevel();
+  const goodKeys = getCurrentLevelGoodKeys();
+  const totalTicks = Math.ceil(level.duration / 5);
+  const curve = strategy.generateCurve(totalTicks, goodKeys);
+  schedulingState.generatedCurve = curve;
+  const expectedStats = calculateExpectedStats(curve, goodKeys, level);
+  schedulingState.expectedStats = expectedStats;
+  const previewData = generatePreviewData(curve, expectedStats, goodKeys, strategy);
+  schedulingState.previewData = previewData;
+  renderPreview(previewData, strategy, goodKeys);
+  schedulingPreviewEl.classList.remove("hidden");
+  schedulingBackBtn.classList.remove("hidden");
+  schedulingStartBtn.classList.remove("hidden");
+  schedulingSkipBtn.classList.add("hidden");
+}
+
+function calculateExpectedStats(curve, goodKeys, level) {
+  let totalExpectedCustomers = 0;
+  const expectedDemandByGood = {};
+  goodKeys.forEach(key => expectedDemandByGood[key] = 0);
+  let maxIntensity = 0;
+  let pressureTicks = 0;
+  curve.forEach((segment, idx) => {
+    const arrivalRate = level.customerBaseGap > 0 ? segment.intensity / level.customerBaseGap : segment.intensity;
+    const expectedCount = Math.max(0, Math.round(arrivalRate * 1.2));
+    totalExpectedCustomers += expectedCount;
+    if (segment.intensity > maxIntensity) maxIntensity = segment.intensity;
+    if (segment.intensity >= 1.3) pressureTicks++;
+    goodKeys.forEach(key => {
+      const weight = segment.goodWeights[key] || 1;
+      const totalWeight = goodKeys.reduce((sum, k) => sum + (segment.goodWeights[k] || 1), 0);
+      expectedDemandByGood[key] += Math.round(expectedCount * (weight / totalWeight));
+    });
+  });
+  const avgPressure = curve.reduce((sum, s) => sum + s.intensity, 0) / curve.length;
+  let overallRisk;
+  if (avgPressure < 0.9 && pressureTicks < curve.length * 0.2) {
+    overallRisk = { label: "低", level: "low" };
+  } else if (avgPressure < 1.2 && pressureTicks < curve.length * 0.4) {
+    overallRisk = { label: "中", level: "medium" };
+  } else {
+    overallRisk = { label: "高", level: "high" };
+  }
+  return {
+    totalExpectedCustomers,
+    expectedDemandByGood,
+    maxIntensity,
+    avgPressure,
+    pressureTicks,
+    overallRisk,
+    curveLength: curve.length
+  };
+}
+
+function generatePreviewData(curve, stats, goodKeys, strategy) {
+  const segments = 20;
+  const ticksPerSegment = Math.max(1, Math.ceil(curve.length / segments));
+  const curveBars = [];
+  for (let i = 0; i < segments; i++) {
+    const start = i * ticksPerSegment;
+    const end = Math.min(curve.length, start + ticksPerSegment);
+    let sum = 0;
+    for (let j = start; j < end; j++) {
+      sum += curve[j].intensity;
+    }
+    const avg = sum / (end - start);
+    let level = 1;
+    if (avg < 0.6) level = 1;
+    else if (avg < 0.85) level = 2;
+    else if (avg < 1.1) level = 3;
+    else if (avg < 1.4) level = 4;
+    else if (avg < 1.8) level = 5;
+    else level = 6;
+    curveBars.push({ level, intensity: avg });
+  }
+  const goodDemandList = goodKeys.map(key => {
+    const demand = stats.expectedDemandByGood[key] || 0;
+    const total = Object.values(stats.expectedDemandByGood).reduce((a, b) => a + b, 0) || 1;
+    const ratio = demand / total;
+    let level;
+    if (ratio < 0.25) level = "low";
+    else if (ratio < 0.4) level = "medium";
+    else level = "high";
+    return { key, demand, ratio, level };
+  });
+  return { curveBars, goodDemandList };
+}
+
+function renderPreview(previewData, strategy, goodKeys) {
+  const stats = schedulingState.expectedStats;
+  previewSummaryEl.innerHTML = `
+    <div class="preview-stat">
+      <span class="preview-stat-label">预期顾客数</span>
+      <span class="preview-stat-value">约 ${stats.totalExpectedCustomers} 位</span>
+    </div>
+    <div class="preview-stat">
+      <span class="preview-stat-label">整体压力</span>
+      <span class="preview-stat-value risk-${stats.overallRisk.level}">${stats.overallRisk.label}风险</span>
+    </div>
+    <div class="preview-stat">
+      <span class="preview-stat-label">高峰时段数</span>
+      <span class="preview-stat-value risk-${stats.pressureTicks > stats.curveLength * 0.3 ? "high" : stats.pressureTicks > stats.curveLength * 0.15 ? "medium" : "low"}">${stats.pressureTicks} 格</span>
+    </div>
+  `;
+  previewCurveEl.innerHTML = `
+    <p class="curve-title"><span>客流强度趋势</span><span>营业开始 → 结束</span></p>
+    <div class="curve-chart">
+      ${previewData.curveBars.map(bar => `<div class="curve-bar level-${bar.level}" title="强度: ${bar.intensity.toFixed(2)}"></div>`).join("")}
+    </div>
+    <div class="curve-labels">
+      <span>开场</span>
+      <span>1/4</span>
+      <span>中段</span>
+      <span>3/4</span>
+      <span>打烊</span>
+    </div>
+  `;
+  previewGoodsEl.innerHTML = previewData.goodDemandList.map(item => {
+    const good = goods[item.key];
+    const percent = Math.round(item.ratio * 100);
+    return `
+      <div class="good-demand-row">
+        <div class="good-demand-icon">${good.icon}</div>
+        <div class="good-demand-name">${good.name}</div>
+        <div class="good-demand-bar">
+          <div class="good-demand-fill ${item.level}" style="width:${percent}%"></div>
+        </div>
+        <div class="good-demand-label ${item.level}">约 ${item.demand} 份</div>
+      </div>
+    `;
+  }).join("");
+  previewTipsEl.innerHTML = `
+    <p class="preview-tips-title">💡 排班建议（${strategy.name}）</p>
+    <ul>
+      ${strategy.tips.map(tip => `<li>${tip}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function backToStrategySelection() {
+  schedulingState.active = false;
+  schedulingState.selectedStrategy = null;
+  schedulingState.generatedCurve = null;
+  schedulingState.previewData = null;
+  schedulingState.expectedStats = null;
+  renderStrategyCards();
+  schedulingPreviewEl.classList.add("hidden");
+  schedulingBackBtn.classList.add("hidden");
+  schedulingStartBtn.classList.add("hidden");
+  schedulingSkipBtn.classList.remove("hidden");
+}
+
+function skipSchedulingChallenge() {
+  schedulingState.active = false;
+  schedulingState.selectedStrategy = null;
+  schedulingState.generatedCurve = null;
+  schedulingState.previewData = null;
+  schedulingState.expectedStats = null;
+  closeSchedulingOverlay();
+  startGame();
+}
+
+function startWithSchedulingStrategy() {
+  if (!schedulingState.selectedStrategy || !schedulingState.generatedCurve) return;
+  schedulingState.actualStats = {
+    customersByTick: new Array(schedulingState.generatedCurve.length).fill(0),
+    demandByGood: {},
+    totalServed: 0,
+    totalMissed: 0
+  };
+  getCurrentLevelGoodKeys().forEach(key => {
+    schedulingState.actualStats.demandByGood[key] = 0;
+  });
+  closeSchedulingOverlay();
+  startGame();
+}
+
+function bindSchedulingControls() {
+  if (schedulingBackBtn) {
+    schedulingBackBtn.addEventListener("click", backToStrategySelection);
+  }
+  if (schedulingStartBtn) {
+    schedulingStartBtn.addEventListener("click", startWithSchedulingStrategy);
+  }
+  if (schedulingSkipBtn) {
+    schedulingSkipBtn.addEventListener("click", skipSchedulingChallenge);
+  }
+  if (schedulingOverlay) {
+    schedulingOverlay.addEventListener("click", (e) => {
+      if (e.target === schedulingOverlay && !schedulingState.selectedStrategy) {
+        closeSchedulingOverlay();
+      }
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !schedulingOverlay.classList.contains("hidden")) {
+      if (schedulingState.selectedStrategy) {
+        backToStrategySelection();
+      } else {
+        closeSchedulingOverlay();
+      }
+    }
+  });
+}
+
+function getCurveSegmentForTick(tickIndex) {
+  if (!schedulingState.generatedCurve) return null;
+  const idx = Math.max(0, Math.min(tickIndex, schedulingState.generatedCurve.length - 1));
+  return schedulingState.generatedCurve[idx];
+}
+
+function recordActualCustomer(goodKey, tickIndex, served) {
+  if (!schedulingState.active || !schedulingState.generatedCurve) return;
+  const idx = Math.max(0, Math.min(tickIndex, schedulingState.actualStats.customersByTick.length - 1));
+  schedulingState.actualStats.customersByTick[idx] += 1;
+  if (schedulingState.actualStats.demandByGood[goodKey] !== undefined) {
+    schedulingState.actualStats.demandByGood[goodKey] += 1;
+  }
+  if (served) {
+    schedulingState.actualStats.totalServed += 1;
+  } else {
+    schedulingState.actualStats.totalMissed += 1;
+  }
+}
+
 function renderLog() {
   logEl.innerHTML = "";
   state.log.forEach((entry) => {
@@ -3012,5 +3653,3 @@ function renderLog() {
     logEl.appendChild(p);
   });
 }
-
-init();
