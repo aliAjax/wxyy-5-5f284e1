@@ -61,6 +61,13 @@
           <span class="editor-banner-title">货架布局编辑模式</span>
           <span class="editor-banner-hint">点击货架选中 → 点击空格移动 → 右侧切换商品</span>
         </div>
+        <div id="trainingBanner" class="training-banner hidden">
+          <span class="training-banner-icon">🎯</span>
+          <span class="training-banner-title">训练模式</span>
+          <span id="trainingBannerTheme" class="training-banner-theme">练习主题：基础操作</span>
+          <span class="training-banner-hint">练习数据不计入店员经验和累计销量</span>
+          <button id="trainingExitBtn" class="training-exit-btn" type="button">✕ 退出训练</button>
+        </div>
         <div id="eventBanner" class="event-banner hidden">
           <span id="eventBannerIcon" class="event-banner-icon">⚡</span>
           <span id="eventBannerTitle" class="event-banner-title">经营事件</span>
@@ -125,6 +132,7 @@
         <div id="normalControls">
           <button id="startBtn" class="primary" type="button">开始营业</button>
           <button id="editLayoutBtn" class="secondary" type="button">🛠️ 编辑货架布局</button>
+          <button id="trainingBtn" class="secondary training-entry-btn" type="button">🎯 训练模式</button>
           <button id="restartBtn" class="secondary" type="button">重新开始</button>
           <button id="changeLevelBtn" class="secondary" type="button">🔄 切换关卡</button>
           <button id="replayBtn" class="secondary" type="button">🎬 查看上局回放</button>
@@ -303,6 +311,54 @@
       <div class="scheme-actions">
         <button id="schemeApplyCancelBtn" class="secondary" type="button" style="margin:0;flex:1;">取消</button>
         <button id="schemeApplyConfirmBtn" class="primary" type="button" style="margin:0;flex:1;">✅ 应用方案</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="trainingOverlay" class="training-overlay hidden">
+    <div class="training-dialog">
+      <div class="training-header">
+        <div>
+          <h2>🎯 训练模式</h2>
+          <p>选择练习主题，在无压力的环境下磨练你的经营技巧。<br>训练数据不计入店员经验和商品累计销量。</p>
+        </div>
+        <button id="trainingCloseBtn" class="training-close" type="button">✕</button>
+      </div>
+
+      <div class="training-body">
+        <div class="training-section">
+          <h3 class="training-section-title">📋 选择练习主题</h3>
+          <div id="trainingThemeList" class="training-theme-list"></div>
+        </div>
+
+        <div class="training-section">
+          <h3 class="training-section-title">📖 训练说明</h3>
+          <div id="trainingInfo" class="training-info">
+            <div class="training-info-empty">← 选择左侧主题查看详情</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="training-actions">
+        <div class="training-level-picker">
+          <label class="training-level-label">难度场景：</label>
+          <select id="trainingLevelSelect" class="training-level-select"></select>
+        </div>
+        <button id="trainingStartBtn" class="primary training-start-btn disabled" type="button" disabled>🚀 开始训练</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="trainingResultOverlay" class="training-overlay hidden">
+    <div class="training-dialog training-dialog-small">
+      <div class="training-header">
+        <h2>🏁 训练完成</h2>
+        <button id="trainingResultCloseBtn" class="training-close" type="button">✕</button>
+      </div>
+      <div id="trainingResultBody" class="training-result-body"></div>
+      <div class="training-actions">
+        <button id="trainingRetryBtn" class="secondary" type="button" style="margin:0;flex:1;">🔁 再来一次</button>
+        <button id="trainingBackBtn" class="primary" type="button" style="margin:0;flex:1;">📋 返回主题选择</button>
       </div>
     </div>
   </div>

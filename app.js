@@ -228,6 +228,22 @@ const schemeApplyPreview = document.getElementById("schemeApplyPreview");
 const schemeApplyCancelBtn = document.getElementById("schemeApplyCancelBtn");
 const schemeApplyConfirmBtn = document.getElementById("schemeApplyConfirmBtn");
 
+const trainingBtn = document.getElementById("trainingBtn");
+const trainingOverlay = document.getElementById("trainingOverlay");
+const trainingCloseBtn = document.getElementById("trainingCloseBtn");
+const trainingThemeListEl = document.getElementById("trainingThemeList");
+const trainingInfoEl = document.getElementById("trainingInfo");
+const trainingLevelSelect = document.getElementById("trainingLevelSelect");
+const trainingStartBtn = document.getElementById("trainingStartBtn");
+const trainingBanner = document.getElementById("trainingBanner");
+const trainingBannerThemeEl = document.getElementById("trainingBannerTheme");
+const trainingExitBtn = document.getElementById("trainingExitBtn");
+const trainingResultOverlay = document.getElementById("trainingResultOverlay");
+const trainingResultCloseBtn = document.getElementById("trainingResultCloseBtn");
+const trainingResultBodyEl = document.getElementById("trainingResultBody");
+const trainingRetryBtn = document.getElementById("trainingRetryBtn");
+const trainingBackBtn = document.getElementById("trainingBackBtn");
+
 const codexState = {
   selectedGood: null
 };
@@ -516,10 +532,14 @@ function canTriggerEvent() {
   const activeCount = (state.events.active || []).length;
   const remainingTicks = getRemainingEventTicks();
 
-  if (currentTick < EVENT_TRIGGER_CONFIG.minStartTick) return false;
-  if (activeCount >= EVENT_TRIGGER_CONFIG.maxActiveEvents) return false;
+  const minStart = getTrainingConfigOverride('eventMinStartTick', EVENT_TRIGGER_CONFIG.minStartTick);
+  const maxActive = getTrainingConfigOverride('eventMaxActive', EVENT_TRIGGER_CONFIG.maxActiveEvents);
+  const minGap = getTrainingConfigOverride('eventMinGap', EVENT_TRIGGER_CONFIG.minGapBetweenEvents);
+
+  if (currentTick < minStart) return false;
+  if (activeCount >= maxActive) return false;
   if (state.events.lastTriggeredTick !== null &&
-      currentTick - state.events.lastTriggeredTick < EVENT_TRIGGER_CONFIG.minGapBetweenEvents) return false;
+      currentTick - state.events.lastTriggeredTick < minGap) return false;
   if (remainingTicks < 3) return false;
   if (getAvailableEventTemplates(remainingTicks).length === 0) return false;
   return true;
@@ -530,9 +550,11 @@ function calculateTriggerChance() {
   const totalTicks = Math.floor(level.duration / 5);
   const currentTick = Math.floor(state.minute / 5);
   const progress = currentTick / totalTicks;
-  let chance = EVENT_TRIGGER_CONFIG.baseTriggerChance;
-  if (progress > 0.5) chance += EVENT_TRIGGER_CONFIG.lateGameChanceBoost;
-  if (progress > 0.75) chance += EVENT_TRIGGER_CONFIG.lateGameChanceBoost * 0.5;
+  const baseChance = getTrainingConfigOverride('eventBaseChance', EVENT_TRIGGER_CONFIG.baseTriggerChance);
+  const boost = getTrainingConfigOverride('eventLateBoost', EVENT_TRIGGER_CONFIG.lateGameChanceBoost);
+  let chance = baseChance;
+  if (progress > 0.5) chance += boost;
+  if (progress > 0.75) chance += boost * 0.5;
   return chance;
 }
 
@@ -852,6 +874,9 @@ function hasAbility(id) {
 }
 
 function maxCarryCount() {
+  if (training.active && training.themeId && TRAINING_THEMES[training.themeId]?.config?.forceDualCarry) {
+    return 2;
+  }
   return hasAbility("dualCarry") ? 2 : 1;
 }
 
@@ -2322,17 +2347,137 @@ const tutorialSteps = [
   }
 ];
 
-function freshState() {
-  const savedSalesCount = localStorage.getItem("codexSalesCount");
-  const salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
-  const savedMissCount = localStorage.getItem("codexMissCount");
-  const missCount = savedMissCount ? JSON.parse(savedMissCount) : {};
-  const savedMaxSession = localStorage.getItem("codexMaxSession");
-  const maxSession = savedMaxSession ? JSON.parse(savedMaxSession) : {};
-  const savedShelfStats = localStorage.getItem("codexShelfStats");
-  const shelfStats = savedShelfStats ? JSON.parse(savedShelfStats) : {};
-  const savedLastSession = localStorage.getItem("codexLastSession");
-  const lastSession = savedLastSession ? JSON.parse(savedLastSession) : {};
+const TRAINING_THEMES = {
+  queue: {
+    id: "queue",
+    name: "顾客排队演练",
+    icon: "👥",
+    difficulty: "beginner",
+    difficultyLabel: "入门",
+    shortDesc: "在高密度客流下练习快速响应和排队管理。",
+    description: "本训练模拟一个客流高峰期，顾客将以更快的速度、更密集的频率涌入店内。你的目标是保持高服务率，避免顾客因排队等待过久而流失。",
+    objectives: [
+      "学习在高压力下快速规划补货路线",
+      "练习优先处理最紧急的顾客需求",
+      "掌握库存不足时的快速应对策略"
+    ],
+    tips: [
+      { title: "紧盯压力指示器", content: "右上角的压力等级会随等待人数升高，注意在达到「紧张」前处理完队列。" },
+      { title: "先补热门货架", content: "优先为顾客最多的商品货架补货，一次补满可服务多位顾客。" }
+    ],
+    config: {
+      customerBaseGap: 1,
+      customerRandomRange: 1,
+      customerWaitMin: 2,
+      customerWaitMax: 4,
+      maxWaitingMultiplier: 1.2,
+      durationMultiplier: 0.8
+    }
+  },
+  event: {
+    id: "event",
+    name: "突发事件应对",
+    icon: "⚡",
+    difficulty: "intermediate",
+    difficultyLabel: "进阶",
+    shortDesc: "在各种经营事件频发的环境中练习临机应变。",
+    description: "本训练将在短时间内连续触发多种随机经营事件（货架故障、仓库断货、需求暴涨、体力消耗加倍等）。你的目标是在混乱中保持销售额，减少缺货损失。",
+    objectives: [
+      "熟悉各类突发事件的应对方式",
+      "练习在事件影响下调整补货优先级",
+      "提高在多重压力下的决策速度"
+    ],
+    tips: [
+      { title: "关注事件横幅", content: "顶部横幅会显示当前活跃事件，仔细阅读事件类型和影响。" },
+      { title: "提前备货", content: "在货架故障/仓库缺货前，提前给其他货架补满货物作为缓冲。" }
+    ],
+    config: {
+      eventInterval: 6,
+      eventMaxActive: 3,
+      durationMultiplier: 0.9,
+      customerBaseGap: 2
+    }
+  },
+  scheduling: {
+    id: "scheduling",
+    name: "排班预测练习",
+    icon: "📊",
+    difficulty: "intermediate",
+    difficultyLabel: "进阶",
+    shortDesc: "结合风险预览，练习根据排班预测提前准备。",
+    description: "本训练在开始前会展示完整的客流预测曲线和商品需求预览。你需要根据预览提前规划备货策略，然后在实际营业中验证预判的准确性。目标是让实际销量与预测尽可能匹配。",
+    objectives: [
+      "学习解读排班预览和需求曲线",
+      "练习根据预测合理分配补货精力",
+      "提高对高峰时段的提前备货意识"
+    ],
+    tips: [
+      { title: "关注高需求时段", content: "在曲线高峰到来前，提前给对应商品货架补满库存。" },
+      { title: "高峰值 = 高风险", content: "5-6级的高峰意味着顾客将大量涌入，务必提前备好热门商品。" }
+    ],
+    config: {
+      showPreview: true,
+      forceStrategy: "peakFocused",
+      durationMultiplier: 1.0
+    }
+  },
+  dualCarry: {
+    id: "dualCarry",
+    name: "双手搬运训练",
+    icon: "💪",
+    difficulty: "advanced",
+    difficultyLabel: "困难",
+    shortDesc: "强制启用双手搬运，练习高效的多物品运输路线。",
+    description: "本训练强制启用店长级「双手搬运」能力（即使你尚未解锁也可使用），一次可以携带两种不同货物。你的目标是尽量减少往返仓库的次数，最大化补货效率。",
+    objectives: [
+      "掌握双手搬运的操作流程（一次取两种货物）",
+      "规划最优路线减少仓库来回次数",
+      "练习正确匹配货物与货架的补货顺序"
+    ],
+    tips: [
+      { title: "合理搭配货物", content: "一次拿相邻区域的两种货架货物，减少走动距离。" },
+      { title: "注意手部容量", content: "双手模式最多带2箱，合理规划每次运输的货物组合。" }
+    ],
+    config: {
+      forceDualCarry: true,
+      customerBaseGap: 2,
+      customerRandomRange: 2,
+      durationMultiplier: 1.0
+    }
+  }
+};
+
+const training = {
+  active: false,
+  themeId: null,
+  levelId: null,
+  originalLevelId: null,
+  selectedThemeId: null,
+  snapshot: null
+};
+
+function freshState(trainingMode = false) {
+  let savedSalesCount, salesCount, savedMissCount, missCount, savedMaxSession, maxSession;
+  let savedShelfStats, shelfStats, savedLastSession, lastSession;
+
+  if (trainingMode) {
+    savedSalesCount = null; salesCount = {};
+    savedMissCount = null; missCount = {};
+    savedMaxSession = null; maxSession = {};
+    savedShelfStats = null; shelfStats = {};
+    savedLastSession = null; lastSession = {};
+  } else {
+    savedSalesCount = localStorage.getItem("codexSalesCount");
+    salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
+    savedMissCount = localStorage.getItem("codexMissCount");
+    missCount = savedMissCount ? JSON.parse(savedMissCount) : {};
+    savedMaxSession = localStorage.getItem("codexMaxSession");
+    maxSession = savedMaxSession ? JSON.parse(savedMaxSession) : {};
+    savedShelfStats = localStorage.getItem("codexShelfStats");
+    shelfStats = savedShelfStats ? JSON.parse(savedShelfStats) : {};
+    savedLastSession = localStorage.getItem("codexLastSession");
+    lastSession = savedLastSession ? JSON.parse(savedLastSession) : {};
+  }
   const level = getCurrentLevel();
 
   const goodKeys = getCurrentLevelGoodKeys();
@@ -2386,7 +2531,8 @@ function freshState() {
       history: [],
       lastTriggeredTick: null
     },
-    warehouseBlocked: false
+    warehouseBlocked: false,
+    _isTraining: trainingMode
   };
 }
 
@@ -2990,6 +3136,7 @@ function init() {
   bindReplayControls();
   bindSchedulingControls();
   bindSchemeControls();
+  bindTrainingControls();
   updateEditorUI();
   updateReplayButtonState();
   updateEditorCurrentSchemeDisplay();
@@ -3350,8 +3497,23 @@ function resetGame() {
   clearInterval(timer);
   timer = null;
   resetAllEventEffects();
-  state = freshState();
+  activeEventsEl.classList.add("hidden");
+  eventBanner.classList.add("hidden");
+  appShellEl.classList.remove("energy-high-drain");
+  const wasTraining = training.active;
+  const savedThemeId = training.themeId;
+  const savedOriginalId = training.originalLevelId;
+  const savedSelected = training.selectedThemeId;
+  state = freshState(wasTraining);
   resultEl.classList.add("hidden");
+  if (wasTraining) {
+    training.active = true;
+    training.themeId = savedThemeId;
+    training.originalLevelId = savedOriginalId;
+    training.selectedThemeId = savedSelected;
+    trainingBanner.classList.remove("hidden");
+    boardEl.classList.add("training-mode");
+  }
   schedulingState.active = false;
   schedulingState.selectedStrategy = null;
   schedulingState.generatedCurve = null;
@@ -3382,7 +3544,12 @@ function resetGame() {
   updateEditorCurrentSchemeDisplay();
   renderCrates();
   renderLevelName();
+  renderClerkBadge();
   render();
+  renderGoals();
+  if (wasTraining && savedThemeId === 'scheduling') {
+    setTimeout(() => openSchedulingForTraining(), 100);
+  }
 }
 
 function tick() {
@@ -3393,8 +3560,9 @@ function tick() {
   processCustomerQueue();
   updateGoalProgress();
   replayRecordFrame('tick');
-  if (state.minute >= getCurrentLevel().duration) {
-    finish("天快亮了，夜班结束。");
+  const effectiveDuration = getTrainingConfigOverride('duration', getCurrentLevel().duration);
+  if (state.minute >= effectiveDuration) {
+    finish("训练时间到，本轮练习结束。");
   }
   render();
 }
@@ -3405,6 +3573,11 @@ function generateIncomingCustomer() {
   const currentTick = Math.floor(state.minute / 5);
   const curveSegment = getCurveSegmentForTick(currentTick);
   const useCurve = schedulingState.active && curveSegment !== null;
+
+  const effectiveCustomerBaseGap = getTrainingConfigOverride('customerBaseGap', level.customerBaseGap);
+  const effectiveCustomerWaitMin = getTrainingConfigOverride('customerWaitMin', level.customerWaitMin);
+  const effectiveCustomerWaitMax = getTrainingConfigOverride('customerWaitMax', level.customerWaitMax);
+  const effectiveCustomerRandomRange = getTrainingConfigOverride('customerRandomRange', level.customerRandomRange);
 
   const weightedKeys = [];
   goodKeys.forEach(key => {
@@ -3426,32 +3599,33 @@ function generateIncomingCustomer() {
   let baseGap;
   if (useCurve) {
     const intensity = curveSegment.intensity;
-    const baseGapRaw = level.customerBaseGap / Math.max(0.5, intensity);
+    const baseGapRaw = effectiveCustomerBaseGap / Math.max(0.5, intensity);
     baseGap = Math.max(1, Math.round(baseGapRaw));
   } else {
-    baseGap = Math.max(1, level.customerBaseGap - Math.floor(state.minute / 40));
+    baseGap = Math.max(1, effectiveCustomerBaseGap - Math.floor(state.minute / 40));
   }
 
   const randomRange = useCurve
-    ? Math.max(1, Math.floor(level.customerRandomRange * 0.8))
-    : level.customerRandomRange;
+    ? Math.max(1, Math.floor(effectiveCustomerRandomRange * 0.8))
+    : effectiveCustomerRandomRange;
 
   const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * randomRange);
   state.customers.incoming.push({
     id: state.customers.nextId++,
     goodKey: goodKey,
     arrivalTick: arrivalTick,
-    maxWait: level.customerWaitMin + Math.floor(Math.random() * (level.customerWaitMax - level.customerWaitMin + 1))
+    maxWait: effectiveCustomerWaitMin + Math.floor(Math.random() * (effectiveCustomerWaitMax - effectiveCustomerWaitMin + 1))
   });
 }
 
 function processCustomerQueue() {
   const currentTick = Math.floor(state.minute / 5);
   const level = getCurrentLevel();
+  const effectiveMaxWaiting = getTrainingConfigOverride('maxWaiting', level.maxWaiting);
 
   const arrived = state.customers.incoming.filter(c => c.arrivalTick <= currentTick);
   arrived.forEach(customer => {
-    if (state.customers.waiting.length < level.maxWaiting) {
+    if (state.customers.waiting.length < effectiveMaxWaiting) {
       const shelf = pickBestShelfForGood(customer.goodKey);
       const waitingCustomer = {
         ...customer,
@@ -3675,6 +3849,9 @@ function addLog(text) {
 
 function finish(reason) {
   if (!state.running) return;
+
+  const isTraining = state._isTraining || training.active;
+
   state.running = false;
   clearInterval(timer);
   timer = null;
@@ -3694,7 +3871,9 @@ function finish(reason) {
     state.customers.waiting = [];
   }
 
-  updateCodexStats();
+  if (!isTraining) {
+    updateCodexStats();
+  }
 
   endActiveEventsForClosing();
   evaluateEndGoals();
@@ -3751,39 +3930,45 @@ function finish(reason) {
   const prevLevel = clerkData.level;
   const totalFinalScore = finalScore + schedulingBonus;
   const expGained = Math.max(10, Math.floor(totalFinalScore * 0.3));
-  clerkData.exp += expGained;
+  let newLevel = prevLevel;
+  let leveledUp = false;
+  let newAbility = null;
+  let expHtml = '';
+  let clerkInfo, nextLvl;
 
-  let newLevel = 1;
-  for (let i = clerkLevels.length - 1; i >= 0; i--) {
-    if (clerkData.exp >= clerkLevels[i].expRequired) {
-      newLevel = clerkLevels[i].level;
-      break;
+  if (!isTraining) {
+    clerkData.exp += expGained;
+    for (let i = clerkLevels.length - 1; i >= 0; i--) {
+      if (clerkData.exp >= clerkLevels[i].expRequired) {
+        newLevel = clerkLevels[i].level;
+        break;
+      }
     }
-  }
-  clerkData.level = newLevel;
-  saveClerkData(clerkData);
+    clerkData.level = newLevel;
+    saveClerkData(clerkData);
 
-  const leveledUp = newLevel > prevLevel;
-  const newAbility = leveledUp ? clerkLevels.find(cl => cl.level === newLevel) : null;
+    leveledUp = newLevel > prevLevel;
+    newAbility = leveledUp ? clerkLevels.find(cl => cl.level === newLevel) : null;
 
-  const clerkInfo = getClerkLevelInfo(prevLevel);
-  const nextLvl = getNextClerkLevel(prevLevel);
-  const expHtml = `
-    <div class="result-goals">
-      <h3>⬆️ 店员经验</h3>
-      <div class="result-goal-list">
-        <div class="result-goal-item success">
-          <span>本次获得经验</span>
-          <span class="reward-tag">+${expGained} EXP</span>
+    clerkInfo = getClerkLevelInfo(prevLevel);
+    nextLvl = getNextClerkLevel(prevLevel);
+    expHtml = `
+      <div class="result-goals">
+        <h3>⬆️ 店员经验</h3>
+        <div class="result-goal-list">
+          <div class="result-goal-item success">
+            <span>本次获得经验</span>
+            <span class="reward-tag">+${expGained} EXP</span>
+          </div>
+          <div class="result-goal-item success">
+            <span>${clerkInfo.icon} ${clerkInfo.title} (Lv.${clerkInfo.level})${leveledUp ? ' → ' + clerkLevels.find(cl => cl.level === newLevel).icon + ' ' + clerkLevels.find(cl => cl.level === newLevel).title + ' (Lv.' + newLevel + ')' : ''}</span>
+            <span class="reward-tag">${clerkData.exp}${nextLvl ? ' / ' + nextLvl.expRequired : ' (MAX)'} EXP</span>
+          </div>
+          ${leveledUp && newAbility && newAbility.ability ? `<div class="result-goal-item success" style="background:#e6f4de;"><span>🎉 解锁新能力：${newAbility.ability.name}</span><span class="reward-tag">${newAbility.ability.desc}</span></div>` : ''}
         </div>
-        <div class="result-goal-item success">
-          <span>${clerkInfo.icon} ${clerkInfo.title} (Lv.${clerkInfo.level})${leveledUp ? ' → ' + clerkLevels.find(cl => cl.level === newLevel).icon + ' ' + clerkLevels.find(cl => cl.level === newLevel).title + ' (Lv.' + newLevel + ')' : ''}</span>
-          <span class="reward-tag">${clerkData.exp}${nextLvl ? ' / ' + nextLvl.expRequired : ' (MAX)'} EXP</span>
-        </div>
-        ${leveledUp && newAbility && newAbility.ability ? `<div class="result-goal-item success" style="background:#e6f4de;"><span>🎉 解锁新能力：${newAbility.ability.name}</span><span class="reward-tag">${newAbility.ability.desc}</span></div>` : ''}
       </div>
-    </div>
-  `;
+    `;
+  }
 
   const eventHistory = state.events.history || [];
   const eventsHtml = eventHistory.length > 0 ? `
@@ -3805,6 +3990,40 @@ function finish(reason) {
   ` : '';
 
   resetAllEventEffects();
+
+  if (isTraining) {
+    const finalData = {
+      sales: state.sales,
+      misses: state.misses,
+      energy: state.energy,
+      served: served,
+      missed: missed,
+      eventsTriggered: eventHistory.length
+    };
+    const savedOriginal = training.originalLevelId;
+    const savedSelected = training.selectedThemeId;
+    training.active = false;
+    training.themeId = null;
+    trainingBanner.classList.add("hidden");
+    boardEl.classList.remove("training-mode");
+    activeEventsEl.classList.add("hidden");
+    eventBanner.classList.add("hidden");
+    appShellEl.classList.remove("energy-high-drain");
+    currentLevelId = savedOriginal || 1;
+    training.originalLevelId = null;
+    schedulingState.active = false;
+    schedulingState.selectedStrategy = null;
+    schedulingState.generatedCurve = null;
+    state = freshState(false);
+    renderCrates();
+    renderLevelName();
+    renderClerkBadge();
+    render();
+    renderGoals();
+    training.selectedThemeId = savedSelected;
+    showTrainingResult(finalData);
+    return;
+  }
 
   const resultHtml = `
     <h2>${reason}</h2>
@@ -4468,7 +4687,11 @@ function startWithSchedulingStrategy() {
     schedulingState.actualStats.demandByGood[key] = 0;
   });
   closeSchedulingOverlay();
-  startGame();
+  if (training.active) {
+    startGameWithTrainingConfig();
+  } else {
+    startGame();
+  }
 }
 
 function bindSchedulingControls() {
@@ -4526,6 +4749,324 @@ function renderLog() {
     p.textContent = entry;
     logEl.appendChild(p);
   });
+}
+
+function openTrainingOverlay() {
+  if (state.running || editor.active) {
+    addLog("游戏进行中或编辑模式下无法进入训练模式。");
+    return;
+  }
+  training.selectedThemeId = null;
+  renderTrainingThemeList();
+  renderTrainingInfo(null);
+  populateTrainingLevelSelect();
+  trainingStartBtn.disabled = true;
+  trainingStartBtn.classList.add("disabled");
+  trainingOverlay.classList.remove("hidden");
+}
+
+function closeTrainingOverlay() {
+  trainingOverlay.classList.add("hidden");
+}
+
+function populateTrainingLevelSelect() {
+  if (!trainingLevelSelect) return;
+  trainingLevelSelect.innerHTML = "";
+  levels.forEach(lv => {
+    const opt = document.createElement("option");
+    opt.value = lv.id;
+    opt.textContent = `${lv.icon} ${lv.name}`;
+    if (lv.id === currentLevelId) opt.selected = true;
+    trainingLevelSelect.appendChild(opt);
+  });
+}
+
+function renderTrainingThemeList() {
+  trainingThemeListEl.innerHTML = "";
+  Object.values(TRAINING_THEMES).forEach(theme => {
+    const card = document.createElement("div");
+    card.className = `training-theme-card ${training.selectedThemeId === theme.id ? "selected" : ""}`;
+    card.innerHTML = `
+      <div class="training-theme-header">
+        <div class="training-theme-icon">${theme.icon}</div>
+        <div class="training-theme-title">
+          <strong>${theme.name}</strong>
+          <div class="training-theme-difficulty">难度：<span class="difficulty-tag ${theme.difficulty}">${theme.difficultyLabel}</span></div>
+        </div>
+      </div>
+      <p class="training-theme-desc">${theme.shortDesc}</p>
+    `;
+    card.addEventListener("click", () => selectTrainingTheme(theme.id));
+    trainingThemeListEl.appendChild(card);
+  });
+}
+
+function selectTrainingTheme(themeId) {
+  training.selectedThemeId = themeId;
+  renderTrainingThemeList();
+  renderTrainingInfo(themeId);
+  trainingStartBtn.disabled = false;
+  trainingStartBtn.classList.remove("disabled");
+}
+
+function renderTrainingInfo(themeId) {
+  if (!themeId) {
+    trainingInfoEl.innerHTML = `<div class="training-info-empty">← 选择左侧主题查看详情</div>`;
+    return;
+  }
+  const theme = TRAINING_THEMES[themeId];
+  if (!theme) return;
+
+  const objectivesHtml = theme.objectives.map(obj => `<li>${obj}</li>`).join("");
+  const tipsHtml = theme.tips.map(tip => `
+    <div class="training-tip-card">
+      <h5>${tip.title}</h5>
+      <p>${tip.content}</p>
+    </div>
+  `).join("");
+
+  trainingInfoEl.innerHTML = `
+    <div class="training-info-header">
+      <div class="training-info-icon">${theme.icon}</div>
+      <div class="training-info-title">
+        <h3>${theme.name}</h3>
+        <span class="difficulty-tag ${theme.difficulty}">${theme.difficultyLabel}</span>
+      </div>
+    </div>
+    <div class="training-info-section">
+      <h4>📝 训练简介</h4>
+      <p>${theme.description}</p>
+    </div>
+    <div class="training-info-section">
+      <h4>🎯 练习目标</h4>
+      <ul>${objectivesHtml}</ul>
+    </div>
+    <div class="training-info-section">
+      <h4>💡 技巧提示</h4>
+      ${tipsHtml}
+    </div>
+  `;
+}
+
+function startTrainingSession() {
+  if (!training.selectedThemeId) return;
+
+  const theme = TRAINING_THEMES[training.selectedThemeId];
+  const selectedLevelId = parseInt(trainingLevelSelect.value, 10) || currentLevelId;
+
+  training.originalLevelId = currentLevelId;
+  currentLevelId = selectedLevelId;
+  training.levelId = selectedLevelId;
+  training.themeId = theme.id;
+  training.active = true;
+
+  state = freshState(true);
+  closeTrainingOverlay();
+
+  trainingBanner.classList.remove("hidden");
+  trainingBannerThemeEl.textContent = `练习主题：${theme.name}`;
+  boardEl.classList.add("training-mode");
+
+  if (theme.id === "scheduling" && theme.config.showPreview) {
+    openSchedulingForTraining();
+  } else {
+    startGameWithTrainingConfig();
+  }
+  addLog(`🎯 进入训练模式：${theme.name}。练习数据不计入店员经验和累计销量。`);
+}
+
+function openSchedulingForTraining() {
+  const strategy = TRAINING_THEMES[training.themeId]?.config?.forceStrategy || "peakFocused";
+  schedulingState.active = true;
+  schedulingState.selectedStrategy = null;
+  schedulingState.generatedCurve = null;
+  schedulingState.expectedStats = null;
+  schedulingState.previewData = null;
+  schedulingState.actualStats = null;
+  strategyCardsEl.innerHTML = "";
+  schedulingPreviewEl.classList.add("hidden");
+  schedulingBackBtn.classList.add("hidden");
+  schedulingStartBtn.classList.add("hidden");
+  schedulingSkipBtn.classList.add("hidden");
+  schedulingOverlay.classList.remove("hidden");
+  renderStrategyCards();
+  setTimeout(() => {
+    if (strategyCardsEl.children.length > 0) {
+      const cards = strategyCardsEl.querySelectorAll(".strategy-card");
+      const targetCard = Array.from(cards).find(c => c.dataset.id === strategy) || cards[0];
+      if (targetCard) {
+        targetCard.classList.add("selected");
+        schedulingState.selectedStrategy = targetCard.dataset.id;
+        generatePreviewForStrategy();
+      }
+    }
+  }, 50);
+}
+
+function startGameWithTrainingConfig() {
+  const theme = TRAINING_THEMES[training.themeId];
+  if (!theme) {
+    startGame();
+    return;
+  }
+  const originalStart = startBtn.disabled;
+  startBtn.disabled = true;
+  resultEl.classList.add("hidden");
+  state.running = true;
+  state.log = [`🎯 训练模式：${theme.name} 开始！加油练习吧！`];
+  state.goals = generateNightGoals();
+  render();
+  renderGoals();
+  if (!timer) {
+    timer = setInterval(tick, getCurrentLevel().tickInterval);
+  }
+}
+
+function exitTrainingSession(showResult = true) {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  const finalState = {
+    sales: state.sales,
+    misses: state.misses,
+    energy: state.energy,
+    served: state.customers.servedCount,
+    missed: state.customers.missedCount,
+    eventsTriggered: (state.events.history || []).length
+  };
+
+  training.active = false;
+  training.themeId = null;
+  trainingBanner.classList.add("hidden");
+  boardEl.classList.remove("training-mode");
+  resetAllEventEffects();
+  activeEventsEl.classList.add("hidden");
+  eventBanner.classList.add("hidden");
+  appShellEl.classList.remove("energy-high-drain");
+  currentLevelId = training.originalLevelId || 1;
+  training.originalLevelId = null;
+
+  state = freshState(false);
+  renderCrates();
+  renderLevelName();
+  renderClerkBadge();
+  render();
+  renderGoals();
+
+  if (showResult) {
+    showTrainingResult(finalState);
+  }
+}
+
+function showTrainingResult(data) {
+  const theme = training.selectedThemeId ? TRAINING_THEMES[training.selectedThemeId] : null;
+  const themeName = theme ? theme.name : "训练";
+  const totalCustomers = data.served + data.missed;
+  const serviceRate = totalCustomers > 0 ? Math.round((data.served / totalCustomers) * 100) : 100;
+  const baseScore = Math.max(0, data.sales + data.energy * 2 - data.misses * 15);
+  const finalScore = baseScore + (serviceRate >= 70 ? 50 : 0);
+
+  trainingResultBodyEl.innerHTML = `
+    <div class="training-result-summary">
+      <div class="training-result-theme">${themeName}</div>
+      <div class="training-result-score">${finalScore}</div>
+      <div class="training-result-label">训练评分</div>
+    </div>
+    <div class="training-result-stats">
+      <div class="training-stat-card">
+        <div class="training-stat-value">¥${data.sales}</div>
+        <div class="training-stat-name">销售额</div>
+      </div>
+      <div class="training-stat-card">
+        <div class="training-stat-value">${data.misses}</div>
+        <div class="training-stat-name">缺货次数</div>
+      </div>
+      <div class="training-stat-card">
+        <div class="training-stat-value">${data.served}</div>
+        <div class="training-stat-name">服务顾客</div>
+      </div>
+      <div class="training-stat-card">
+        <div class="training-stat-value">${serviceRate}%</div>
+        <div class="training-stat-name">服务率</div>
+      </div>
+    </div>
+    <div class="training-isolation-notice">
+      <p><strong>🔒 数据已隔离</strong></p>
+      <p>本次训练的销售数据未计入「经营手册」累计销量，店员经验也未获得增长。</p>
+      <p>回到正式营业模式后，所有数据继续正常累积。</p>
+    </div>
+  `;
+  trainingResultOverlay.classList.remove("hidden");
+}
+
+function closeTrainingResultOverlay() {
+  trainingResultOverlay.classList.add("hidden");
+}
+
+function retryTraining() {
+  closeTrainingResultOverlay();
+  setTimeout(() => {
+    training.selectedThemeId = training.selectedThemeId;
+    startTrainingSession();
+  }, 80);
+}
+
+function backToTrainingThemes() {
+  closeTrainingResultOverlay();
+  setTimeout(() => {
+    openTrainingOverlay();
+  }, 80);
+}
+
+function bindTrainingControls() {
+  if (trainingBtn) {
+    trainingBtn.addEventListener("click", openTrainingOverlay);
+  }
+  if (trainingCloseBtn) {
+    trainingCloseBtn.addEventListener("click", closeTrainingOverlay);
+  }
+  if (trainingOverlay) {
+    trainingOverlay.addEventListener("click", (e) => {
+      if (e.target === trainingOverlay) closeTrainingOverlay();
+    });
+  }
+  if (trainingStartBtn) {
+    trainingStartBtn.addEventListener("click", startTrainingSession);
+  }
+  if (trainingExitBtn) {
+    trainingExitBtn.addEventListener("click", () => {
+      if (confirm("确定要退出当前训练吗？训练进度将不会保存。")) {
+        exitTrainingSession(true);
+      }
+    });
+  }
+  if (trainingResultCloseBtn) {
+    trainingResultCloseBtn.addEventListener("click", closeTrainingResultOverlay);
+  }
+  if (trainingResultOverlay) {
+    trainingResultOverlay.addEventListener("click", (e) => {
+      if (e.target === trainingResultOverlay) closeTrainingResultOverlay();
+    });
+  }
+  if (trainingRetryBtn) {
+    trainingRetryBtn.addEventListener("click", retryTraining);
+  }
+  if (trainingBackBtn) {
+    trainingBackBtn.addEventListener("click", backToTrainingThemes);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (!trainingOverlay.classList.contains("hidden")) closeTrainingOverlay();
+      if (!trainingResultOverlay.classList.contains("hidden")) closeTrainingResultOverlay();
+    }
+  });
+}
+
+function getTrainingConfigOverride(key) {
+  if (!training.active || !training.themeId) return null;
+  const theme = TRAINING_THEMES[training.themeId];
+  return theme?.config?.[key] ?? null;
 }
 
 init();
