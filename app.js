@@ -1105,7 +1105,7 @@ function renderActiveEvents() {
   });
 }
 
-function resetAllEventEffects() {
+function resetAllEventEffects(preserveWarning = false) {
   if (state) {
     state.warehouseBlocked = false;
     if (state.shelves) {
@@ -1114,7 +1114,7 @@ function resetAllEventEffects() {
         shelf._partialAccess = false;
       });
     }
-    if (state.events) {
+    if (state.events && !preserveWarning) {
       state.events.warning = null;
     }
   }
@@ -2095,7 +2095,7 @@ function replayApplyFrame(index) {
   state.warehouseBlocked = frame.warehouseBlocked;
   state.running = frame.running;
 
-  resetAllEventEffects();
+  resetAllEventEffects(true);
   if (warningBanner) warningBanner.classList.add("hidden");
   if (responsePanel) responsePanel.classList.add("hidden");
 
@@ -2260,13 +2260,28 @@ function replayExitMode() {
     state.running = saved.running;
   }
 
-  resetAllEventEffects();
+  resetAllEventEffects(true);
   if (warningBanner) warningBanner.classList.add("hidden");
   if (responsePanel) responsePanel.classList.add("hidden");
   replayPlayer.savedRealState && replayPlayer.savedRealState.events.active.forEach(event => {
     const template = eventTemplates[event.templateId];
     if (template) applyEventVisualEffects(template, true, event.effect);
   });
+
+  if (state.events.warning) {
+    const wTemplate = eventTemplates[state.events.warning.templateId];
+    if (wTemplate) {
+      showWarningBanner(wTemplate);
+      showResponsePanel(wTemplate);
+      if (state.events.warning.selectedResponse) {
+        const options = responseOptions.querySelectorAll('.response-option');
+        const idx = (wTemplate.responses || []).findIndex(r => r.id === state.events.warning.selectedResponse);
+        if (idx >= 0 && options[idx]) {
+          options[idx].classList.add('selected');
+        }
+      }
+    }
+  }
 
   if (replayPlayer.savedResultHtml) {
     resultEl.innerHTML = replayPlayer.savedResultHtml;
