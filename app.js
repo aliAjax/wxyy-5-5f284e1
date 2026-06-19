@@ -1340,7 +1340,7 @@ function upgradeSkill(skillId) {
           state.energy = Math.min(state.energy + skill.effectPerLevel, newMax);
         }
       }
-      renderAll();
+      render();
       return { success: true, newLevel: data.skills[skillId] };
     }
   }
