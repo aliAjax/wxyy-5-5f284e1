@@ -73,6 +73,26 @@
           <span id="eventBannerTitle" class="event-banner-title">经营事件</span>
           <span id="eventBannerDesc" class="event-banner-desc">事件描述</span>
         </div>
+        <div id="warningBanner" class="event-banner event-warning hidden">
+          <span id="warningBannerIcon" class="event-banner-icon">⚠️</span>
+          <div class="warning-banner-body">
+            <div class="warning-banner-header">
+              <span id="warningBannerTitle" class="event-banner-title">预警</span>
+              <span id="warningBannerCountdown" class="warning-countdown">剩余 2 格</span>
+            </div>
+            <span id="warningBannerDesc" class="event-banner-desc">预警描述</span>
+          </div>
+        </div>
+        <div id="responsePanel" class="response-panel hidden">
+          <div class="response-header">
+            <span class="response-header-icon" id="responseEventIcon">⚠️</span>
+            <div>
+              <div class="response-header-title" id="responseEventName">事件预警</div>
+              <div class="response-header-desc" id="responseEventDesc">选择你的应对方式</div>
+            </div>
+          </div>
+          <div id="responseOptions" class="response-options"></div>
+        </div>
         <div id="activeEvents" class="active-events hidden"></div>
         <div id="board" class="board"></div>
         <div class="controls">

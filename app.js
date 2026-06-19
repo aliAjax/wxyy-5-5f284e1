@@ -186,6 +186,16 @@ const eventBannerIcon = document.getElementById("eventBannerIcon");
 const eventBannerTitle = document.getElementById("eventBannerTitle");
 const eventBannerDesc = document.getElementById("eventBannerDesc");
 const activeEventsEl = document.getElementById("activeEvents");
+const warningBanner = document.getElementById("warningBanner");
+const warningBannerIcon = document.getElementById("warningBannerIcon");
+const warningBannerTitle = document.getElementById("warningBannerTitle");
+const warningBannerDesc = document.getElementById("warningBannerDesc");
+const warningBannerCountdown = document.getElementById("warningBannerCountdown");
+const responsePanel = document.getElementById("responsePanel");
+const responseEventIcon = document.getElementById("responseEventIcon");
+const responseEventName = document.getElementById("responseEventName");
+const responseEventDesc = document.getElementById("responseEventDesc");
+const responseOptions = document.getElementById("responseOptions");
 const appShellEl = document.querySelector(".app-shell");
 
 const saveAsSchemeBtn = document.getElementById("saveAsSchemeBtn");
@@ -248,12 +258,17 @@ const codexState = {
   selectedGood: null
 };
 
+const EVENT_WARNING_TICKS = 2;
+
 const eventTemplates = {
   hotDrinkSurge: {
     id: "hotDrinkSurge",
     name: "热饮需求暴涨",
     type: "demand",
     icon: "☕",
+    warningIcon: "🌡️",
+    warningTitle: "🌡️ 气温骤降预警",
+    warningDesc: "天气预报称寒潮即将来袭，热饮需求可能暴涨！",
     startTitle: "☕ 热饮需求暴涨！",
     startDesc: "深夜寒风来袭，顾客对热饮的需求大幅增加！",
     endTitle: "✅ 热饮热潮消退",
@@ -261,6 +276,29 @@ const eventTemplates = {
     minDuration: 4,
     maxDuration: 7,
     effect: { goodKey: "drink", demandMultiplier: 2.5 },
+    responses: [
+      {
+        id: "stockUp",
+        name: "提前热饮备货",
+        icon: "📦",
+        desc: "趁还来得及，先给热饮货架补满库存",
+        effectMods: { demandMultiplier: -0.5 }
+      },
+      {
+        id: "quickCheck",
+        name: "清点仓库",
+        icon: "📋",
+        desc: "检查仓库库存，事件持续时间缩短1格",
+        effectMods: { durationDelta: -1 }
+      },
+      {
+        id: "waitItOut",
+        name: "按兵不动",
+        icon: "🤷",
+        desc: "不做额外准备，事件按原样发生",
+        effectMods: {}
+      }
+    ],
     log: {
       start: "☕ 突发：深夜寒风袭来，顾客对热饮的需求暴涨！进店顾客购买热饮的概率大幅提高。",
       end: "✅ 热饮热潮消退，顾客偏好恢复正常。"
@@ -271,6 +309,9 @@ const eventTemplates = {
     name: "泡面货架故障",
     type: "shelf",
     icon: "🍜",
+    warningIcon: "🔧",
+    warningTitle: "🔧 货架异响预警",
+    warningDesc: "泡面货架发出异响，可能即将发生故障！",
     startTitle: "🍜 泡面货架故障！",
     startDesc: "泡面货架突然出了问题，暂时无法取货和补货！",
     endTitle: "✅ 泡面货架修复",
@@ -278,6 +319,29 @@ const eventTemplates = {
     minDuration: 3,
     maxDuration: 5,
     effect: { targetGood: "noodle", blockShelf: true },
+    responses: [
+      {
+        id: "reinforce",
+        name: "临时加固货架",
+        icon: "🛡️",
+        desc: "对货架进行紧急加固，故障持续时间缩短1格",
+        effectMods: { durationDelta: -1 }
+      },
+      {
+        id: "transferGoods",
+        name: "提前转移泡面",
+        icon: "🔄",
+        desc: "把泡面挪到其他位置，故障时仍可有限售卖",
+        effectMods: { partialAccess: true }
+      },
+      {
+        id: "waitItOut",
+        name: "按兵不动",
+        icon: "🤷",
+        desc: "不做额外准备，事件按原样发生",
+        effectMods: {}
+      }
+    ],
     log: {
       start: "🍜 突发：泡面货架电路故障，无法售卖也无法补货！请优先补货其他货架。",
       end: "✅ 泡面货架已临时修复，恢复正常售卖和补货。"
@@ -288,6 +352,9 @@ const eventTemplates = {
     name: "仓库短暂断货",
     type: "warehouse",
     icon: "📦",
+    warningIcon: "🚚",
+    warningTitle: "🚚 物流延迟预警",
+    warningDesc: "接到通知，补给车可能晚点，仓库将暂时缺货！",
     startTitle: "📦 仓库短暂断货！",
     startDesc: "物流延迟，仓库暂时无法取出任何货物！",
     endTitle: "✅ 仓库到货",
@@ -295,6 +362,29 @@ const eventTemplates = {
     minDuration: 3,
     maxDuration: 5,
     effect: { blockWarehouse: true },
+    responses: [
+      {
+        id: "stockUp",
+        name: "提前清点仓库",
+        icon: "📋",
+        desc: "趁仓库还能用，赶紧取货备货，事件持续时间缩短1格",
+        effectMods: { durationDelta: -1 }
+      },
+      {
+        id: "saveEnergy",
+        name: "节省体力",
+        icon: "💤",
+        desc: "减少活动等待补给，事件期间体力消耗减半",
+        effectMods: { energySaveDuring: true }
+      },
+      {
+        id: "waitItOut",
+        name: "按兵不动",
+        icon: "🤷",
+        desc: "不做额外准备，事件按原样发生",
+        effectMods: {}
+      }
+    ],
     log: {
       start: "📦 突发：物流延迟导致仓库断货！暂时无法从仓库取货，请用现有库存应对。",
       end: "✅ 补给车到货，仓库恢复正常，可以继续取货补货了！"
@@ -305,6 +395,9 @@ const eventTemplates = {
     name: "体力消耗加剧",
     type: "energy",
     icon: "💤",
+    warningIcon: "😴",
+    warningTitle: "😴 困倦预警",
+    warningDesc: "一阵困意袭来，你感觉体力消耗即将加倍！",
     startTitle: "💤 疲惫袭来！",
     startDesc: "深夜困倦来袭，所有行动的体力消耗翻倍！",
     endTitle: "✅ 精神恢复",
@@ -312,6 +405,29 @@ const eventTemplates = {
     minDuration: 4,
     maxDuration: 6,
     effect: { energyMultiplier: 2 },
+    responses: [
+      {
+        id: "coffee",
+        name: "喝咖啡提神",
+        icon: "☕",
+        desc: "来一杯咖啡，体力消耗倍率从2x降为1.5x",
+        effectMods: { energyMultiplierDelta: -0.5 }
+      },
+      {
+        id: "rest",
+        name: "适当休息",
+        icon: "🛋️",
+        desc: "放慢节奏，事件持续时间缩短1格但消耗5点体力",
+        effectMods: { durationDelta: -1, energyCost: 5 }
+      },
+      {
+        id: "waitItOut",
+        name: "按兵不动",
+        icon: "🤷",
+        desc: "不做额外准备，事件按原样发生",
+        effectMods: {}
+      }
+    ],
     log: {
       start: "💤 突发：深夜困倦袭来，移动、拿货、补货的体力消耗全部翻倍！",
       end: "✅ 一阵冷风让你清醒过来，体力消耗恢复正常。"
@@ -538,6 +654,7 @@ function canTriggerEvent() {
 
   if (currentTick < minStart) return false;
   if (activeCount >= maxActive) return false;
+  if (state.events.warning) return false;
   if (state.events.lastTriggeredTick !== null &&
       currentTick - state.events.lastTriggeredTick < minGap) return false;
   if (remainingTicks < 3) return false;
@@ -566,14 +683,158 @@ function tryTriggerRandomEvent() {
   const remainingTicks = getRemainingEventTicks();
   const available = getAvailableEventTemplates(remainingTicks);
   const template = available[Math.floor(Math.random() * available.length)];
-  startEvent(template, remainingTicks);
+  createEventWarning(template, remainingTicks);
 }
 
-function startEvent(template, maxDuration = Infinity) {
-  const durationMax = Math.min(template.maxDuration, maxDuration);
-  const duration = template.minDuration +
-    Math.floor(Math.random() * (durationMax - template.minDuration + 1));
+function createEventWarning(template, maxDuration) {
   const currentTick = Math.floor(state.minute / 5);
+
+  state.events.warning = {
+    templateId: template.id,
+    name: template.name,
+    type: template.type,
+    icon: template.icon,
+    warningIcon: template.warningIcon,
+    warningTitle: template.warningTitle,
+    warningDesc: template.warningDesc,
+    startTick: currentTick,
+    remainingTicks: EVENT_WARNING_TICKS,
+    maxDuration: maxDuration,
+    selectedResponse: null
+  };
+
+  addLog(`⚠️ 预警：${template.warningDesc}`);
+  showWarningBanner(template);
+  showResponsePanel(template);
+  replayRecordFrame('event_warning');
+}
+
+function showWarningBanner(template) {
+  if (!warningBanner) return;
+  warningBannerIcon.textContent = template.warningIcon || '⚠️';
+  warningBannerTitle.textContent = template.warningTitle || '预警';
+  warningBannerDesc.textContent = template.warningDesc || '';
+  warningBannerCountdown.textContent = `剩余 ${state.events.warning.remainingTicks} 格`;
+  warningBanner.classList.remove("hidden");
+}
+
+function updateWarningBannerCountdown() {
+  if (!state.events.warning || !warningBannerCountdown) return;
+  warningBannerCountdown.textContent = `剩余 ${state.events.warning.remainingTicks} 格`;
+}
+
+function hideWarningBanner() {
+  if (warningBanner) warningBanner.classList.add("hidden");
+}
+
+function showResponsePanel(template) {
+  if (!responsePanel) return;
+  responseEventIcon.textContent = template.warningIcon || template.icon;
+  responseEventName.textContent = template.warningTitle || template.name;
+  responseEventDesc.textContent = '选择你的应对方式：';
+
+  responseOptions.innerHTML = '';
+  const responses = template.responses || [];
+  const isReplayMode = replayPlayer && replayPlayer.active;
+  responses.forEach(resp => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'response-option';
+    if (isReplayMode) {
+      btn.classList.add('disabled');
+    }
+    btn.innerHTML = `
+      <span class="response-option-icon">${resp.icon}</span>
+      <span class="response-option-name">${resp.name}</span>
+      <span class="response-option-desc">${resp.desc}</span>
+    `;
+    if (!isReplayMode) {
+      btn.addEventListener('click', () => selectEventResponse(resp.id));
+    }
+    responseOptions.appendChild(btn);
+  });
+  responsePanel.classList.remove("hidden");
+}
+
+function selectEventResponse(responseId) {
+  if (!state.events.warning) return;
+  state.events.warning.selectedResponse = responseId;
+
+  const template = eventTemplates[state.events.warning.templateId];
+  if (template && template.responses) {
+    const resp = template.responses.find(r => r.id === responseId);
+    if (resp) {
+      addLog(`🛡️ 你选择了：${resp.icon} ${resp.name} — ${resp.desc}`);
+    }
+  }
+
+  const options = responseOptions.querySelectorAll('.response-option');
+  options.forEach(opt => opt.classList.remove('selected'));
+  const idx = (template.responses || []).findIndex(r => r.id === responseId);
+  if (idx >= 0 && options[idx]) {
+    options[idx].classList.add('selected');
+  }
+
+  responsePanel.classList.add("hidden");
+}
+
+function tickWarningCountdown() {
+  if (!state.events.warning) return;
+  state.events.warning.remainingTicks--;
+  updateWarningBannerCountdown();
+
+  if (state.events.warning.remainingTicks <= 0) {
+    const warning = state.events.warning;
+    state.events.warning = null;
+    hideWarningBanner();
+    responsePanel.classList.add("hidden");
+    startEventFromWarning(warning);
+  }
+}
+
+function startEventFromWarning(warning) {
+  const template = eventTemplates[warning.templateId];
+  if (!template) return;
+
+  const response = warning.selectedResponse
+    ? (template.responses || []).find(r => r.id === warning.selectedResponse)
+    : null;
+  const effectMods = response ? response.effectMods : {};
+
+  startEvent(template, warning.maxDuration, effectMods, response);
+}
+
+function startEvent(template, maxDuration = Infinity, effectMods = {}, response = null) {
+  let durationMax = Math.min(template.maxDuration, maxDuration);
+  const originalDuration = template.minDuration +
+    Math.floor(Math.random() * (durationMax - template.minDuration + 1));
+  let duration = originalDuration;
+
+  if (effectMods.durationDelta) {
+    duration = Math.max(template.minDuration, duration + effectMods.durationDelta);
+  }
+
+  const currentTick = Math.floor(state.minute / 5);
+
+  const originalEffect = { ...template.effect };
+  const effect = { ...originalEffect };
+  if (effectMods.demandMultiplier && effect.demandMultiplier) {
+    effect.demandMultiplier = Math.max(1, effect.demandMultiplier + effectMods.demandMultiplier);
+  }
+  if (effectMods.energyMultiplierDelta && effect.energyMultiplier) {
+    effect.energyMultiplier = Math.max(1, effect.energyMultiplier + effectMods.energyMultiplierDelta);
+  }
+  if (effectMods.partialAccess) {
+    effect.partialAccess = true;
+  }
+  if (effectMods.energySaveDuring) {
+    effect.energySaveDuring = true;
+  }
+
+  if (effectMods.energyCost && state.energy >= effectMods.energyCost) {
+    state.energy -= effectMods.energyCost;
+    addLog(`💨 应对消耗了 ${effectMods.energyCost} 点体力`);
+  }
 
   const event = {
     id: template.id,
@@ -584,7 +845,9 @@ function startEvent(template, maxDuration = Infinity) {
     startTick: currentTick,
     endTick: currentTick + duration,
     duration: duration,
-    effect: { ...template.effect }
+    effect: effect,
+    responseName: response ? response.name : null,
+    responseIcon: response ? response.icon : null
   };
 
   state.events.active.push(event);
@@ -593,12 +856,25 @@ function startEvent(template, maxDuration = Infinity) {
     id: template.id,
     name: template.name,
     startTick: currentTick,
-    ended: false
+    ended: false,
+    endTick: null,
+    responseName: response ? response.name : null,
+    responseIcon: response ? response.icon : null,
+    responseDesc: response ? response.desc : null,
+    effectMods: Object.keys(effectMods).length > 0 ? effectMods : null,
+    originalEffect: originalEffect,
+    finalEffect: { ...effect },
+    originalDuration: originalDuration,
+    finalDuration: duration
   });
 
-  addLog(template.log.start);
+  let startLog = template.log.start;
+  if (response && response.name !== '按兵不动') {
+    startLog = `${response.icon} 应对「${response.name}」生效！` + startLog;
+  }
+  addLog(startLog);
   showEventBanner(template.startTitle, template.startDesc, template.type, false, template.icon);
-  applyEventVisualEffects(template, true);
+  applyEventVisualEffects(template, true, effect);
   replayRecordFrame('event_start');
 }
 
@@ -632,6 +908,13 @@ function checkEventExpirations() {
 }
 
 function endActiveEventsForClosing() {
+  if (state.events.warning) {
+    addLog(`⚠️ 预警中的「${state.events.warning.name}」因打烊取消。`);
+    state.events.warning = null;
+    hideWarningBanner();
+    responsePanel && responsePanel.classList.add("hidden");
+  }
+
   const active = state.events.active || [];
   if (active.length === 0) return;
   const currentTick = Math.floor(state.minute / 5);
@@ -668,18 +951,20 @@ function showEventBanner(title, desc, type, isEnd, icon) {
   }, 4000);
 }
 
-function applyEventVisualEffects(template, apply) {
+function applyEventVisualEffects(template, apply, effect) {
   if (!state || !state.shelves) return;
+  const actualEffect = effect || template.effect;
   switch (template.id) {
     case "noodleShelfBroken":
       state.shelves.forEach(shelf => {
         if (shelf.good === "noodle") {
-          shelf._broken = apply;
+          shelf._broken = apply && !actualEffect.partialAccess;
+          shelf._partialAccess = apply && actualEffect.partialAccess;
         }
       });
       break;
     case "warehouseShortage":
-      state.warehouseBlocked = apply;
+      state.warehouseBlocked = apply && !actualEffect.energySaveDuring;
       break;
     case "fatigueIncrease":
       if (apply) {
@@ -715,9 +1000,21 @@ function getGoodDemandMultiplier(goodKey) {
 function isShelfBlocked(shelf) {
   if (!shelf) return false;
   if (shelf._broken) return true;
+  if (shelf._partialAccess) return false;
   const shelfEvents = getActiveEventsByType("shelf");
   for (const event of shelfEvents) {
-    if (event.effect.blockShelf && shelf.good === event.effect.targetGood) {
+    if (event.effect.blockShelf && !event.effect.partialAccess && shelf.good === event.effect.targetGood) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isShelfPartialAccess(shelf) {
+  if (!shelf || !shelf._partialAccess) return false;
+  const shelfEvents = getActiveEventsByType("shelf");
+  for (const event of shelfEvents) {
+    if (event.effect.partialAccess && shelf.good === event.effect.targetGood) {
       return true;
     }
   }
@@ -726,7 +1023,11 @@ function isShelfBlocked(shelf) {
 
 function isWarehouseBlocked() {
   if (state.warehouseBlocked) return true;
-  return getActiveEventsByType("warehouse").length > 0;
+  const warehouseEvents = getActiveEventsByType("warehouse");
+  for (const event of warehouseEvents) {
+    if (!event.effect.energySaveDuring) return true;
+  }
+  return false;
 }
 
 function getEnergyMultiplier() {
@@ -735,13 +1036,21 @@ function getEnergyMultiplier() {
   energyEvents.forEach(event => {
     multiplier *= event.effect.energyMultiplier;
   });
+  const warehouseEvents = getActiveEventsByType("warehouse");
+  warehouseEvents.forEach(event => {
+    if (event.effect.energySaveDuring) {
+      multiplier *= 0.5;
+    }
+  });
   return multiplier;
 }
 
 function renderActiveEvents() {
   if (!activeEventsEl) return;
   const active = state.events.active || [];
-  if (active.length === 0) {
+  const warning = state.events.warning;
+
+  if (active.length === 0 && !warning) {
     activeEventsEl.classList.add("hidden");
     return;
   }
@@ -749,15 +1058,38 @@ function renderActiveEvents() {
   activeEventsEl.innerHTML = "";
   const currentTick = Math.floor(state.minute / 5);
 
+  if (warning) {
+    const wCard = document.createElement("div");
+    wCard.className = "active-event-card type-warning";
+    const respText = warning.selectedResponse
+      ? eventTemplates[warning.templateId]?.responses?.find(r => r.id === warning.selectedResponse)?.name || '已选择'
+      : '等待选择...';
+    wCard.innerHTML = `
+      <span class="active-event-icon">${warning.warningIcon || '⚠️'}</span>
+      <div class="active-event-info">
+        <div class="active-event-name">${warning.warningTitle || '预警中'}</div>
+        <div class="active-event-remaining">
+          <span>预警剩余 ${warning.remainingTicks} 格</span>
+          <div class="active-event-bar warning"><span style="width:${(warning.remainingTicks / EVENT_WARNING_TICKS) * 100}%"></span></div>
+        </div>
+        <div class="active-event-response">应对：${respText}</div>
+      </div>
+    `;
+    activeEventsEl.appendChild(wCard);
+  }
+
   active.forEach(event => {
     const remaining = Math.max(0, event.endTick - currentTick);
     const total = event.duration;
     const elapsed = total - remaining;
     const ratio = total > 0 ? Math.max(0, Math.min(100, ((total - elapsed) / total) * 100)) : 0;
-    const template = eventTemplates[event.templateId];
+
+    const responseHtml = event.responseName
+      ? `<div class="active-event-response">${event.responseIcon || ''} ${event.responseName}</div>`
+      : '';
 
     const card = document.createElement("div");
-    card.className = `active-event-card type-${event.type}`;
+    card.className = `active-event-card type-${event.type}${event.responseName ? ' has-response' : ''}`;
     card.innerHTML = `
       <span class="active-event-icon">${event.icon}</span>
       <div class="active-event-info">
@@ -766,6 +1098,7 @@ function renderActiveEvents() {
           <span>剩余 ${remaining} 格</span>
           <div class="active-event-bar"><span style="width:${ratio}%"></span></div>
         </div>
+        ${responseHtml}
       </div>
     `;
     activeEventsEl.appendChild(card);
@@ -778,7 +1111,11 @@ function resetAllEventEffects() {
     if (state.shelves) {
       state.shelves.forEach(shelf => {
         shelf._broken = false;
+        shelf._partialAccess = false;
       });
+    }
+    if (state.events) {
+      state.events.warning = null;
     }
   }
   document.body.classList.remove("energy-high-drain");
@@ -788,6 +1125,8 @@ function resetAllEventEffects() {
   }
   if (eventBanner) eventBanner.classList.add("hidden");
   if (activeEventsEl) activeEventsEl.classList.add("hidden");
+  if (warningBanner) warningBanner.classList.add("hidden");
+  if (responsePanel) responsePanel.classList.add("hidden");
 }
 
 const goods = {
@@ -1348,7 +1687,8 @@ function confirmApplyScheme() {
       good: s.good,
       stock: stockSource.stock || 0,
       max: s.max,
-      _broken: Boolean(stockSource._broken)
+      _broken: Boolean(stockSource._broken),
+      _partialAccess: Boolean(stockSource._partialAccess)
     };
   });
   state.shelves = newShelves;
@@ -1620,7 +1960,8 @@ function deepCloneStateForReplay(s) {
     carry: [...s.carry],
     shelves: s.shelves.map(sh => ({
       id: sh.id, x: sh.x, y: sh.y, good: sh.good,
-      stock: sh.stock, max: sh.max, _broken: sh._broken
+      stock: sh.stock, max: sh.max, _broken: sh._broken,
+      _partialAccess: sh._partialAccess
     })),
     log: [...s.log],
     salesCount: { ...s.salesCount },
@@ -1640,7 +1981,8 @@ function deepCloneStateForReplay(s) {
     events: {
       active: s.events.active.map(e => ({ ...e })),
       history: s.events.history.map(h => ({ ...h })),
-      lastTriggeredTick: s.events.lastTriggeredTick
+      lastTriggeredTick: s.events.lastTriggeredTick,
+      warning: s.events.warning ? { ...s.events.warning } : null
     },
     warehouseBlocked: s.warehouseBlocked,
     running: s.running
@@ -1747,16 +2089,35 @@ function replayApplyFrame(index) {
   state.events = {
     active: frame.events.active.map(e => ({ ...e })),
     history: frame.events.history.map(h => ({ ...h })),
-    lastTriggeredTick: frame.events.lastTriggeredTick
+    lastTriggeredTick: frame.events.lastTriggeredTick,
+    warning: frame.events.warning ? { ...frame.events.warning } : null
   };
   state.warehouseBlocked = frame.warehouseBlocked;
   state.running = frame.running;
 
   resetAllEventEffects();
+  if (warningBanner) warningBanner.classList.add("hidden");
+  if (responsePanel) responsePanel.classList.add("hidden");
+
+  if (state.events.warning) {
+    const wTemplate = eventTemplates[state.events.warning.templateId];
+    if (wTemplate) {
+      showWarningBanner(wTemplate);
+      showResponsePanel(wTemplate);
+      if (state.events.warning.selectedResponse) {
+        const options = responseOptions.querySelectorAll('.response-option');
+        const idx = (wTemplate.responses || []).findIndex(r => r.id === state.events.warning.selectedResponse);
+        if (idx >= 0 && options[idx]) {
+          options[idx].classList.add('selected');
+        }
+      }
+    }
+  }
+
   frame.events.active.forEach(event => {
     const template = eventTemplates[event.templateId];
     if (template) {
-      applyEventVisualEffects(template, true);
+      applyEventVisualEffects(template, true, event.effect);
     }
   });
 
@@ -1892,16 +2253,19 @@ function replayExitMode() {
     state.events = {
       active: saved.events.active.map(e => ({ ...e })),
       history: saved.events.history.map(h => ({ ...h })),
-      lastTriggeredTick: saved.events.lastTriggeredTick
+      lastTriggeredTick: saved.events.lastTriggeredTick,
+      warning: saved.events.warning ? { ...saved.events.warning } : null
     };
     state.warehouseBlocked = saved.warehouseBlocked;
     state.running = saved.running;
   }
 
   resetAllEventEffects();
+  if (warningBanner) warningBanner.classList.add("hidden");
+  if (responsePanel) responsePanel.classList.add("hidden");
   replayPlayer.savedRealState && replayPlayer.savedRealState.events.active.forEach(event => {
     const template = eventTemplates[event.templateId];
-    if (template) applyEventVisualEffects(template, true);
+    if (template) applyEventVisualEffects(template, true, event.effect);
   });
 
   if (replayPlayer.savedResultHtml) {
@@ -2532,7 +2896,8 @@ function freshState(trainingMode = false) {
     events: {
       active: [],
       history: [],
-      lastTriggeredTick: null
+      lastTriggeredTick: null,
+      warning: null
     },
     warehouseBlocked: false,
     _isTraining: trainingMode
@@ -3558,6 +3923,7 @@ function resetGame() {
 function tick() {
   if (!state.running) return;
   state.minute += 5;
+  tickWarningCountdown();
   checkEventExpirations();
   tryTriggerRandomEvent();
   processCustomerQueue();
@@ -3991,11 +4357,47 @@ function finish(reason) {
         ${eventHistory.map(h => {
           const template = eventTemplates[h.id];
           const icon = template ? template.icon : '⚡';
-          const duration = h.ended && h.endTick ? `（持续 ${h.endTick - h.startTick} 格）` : '（未结束）';
+          const actualDuration = h.ended && h.endTick ? h.endTick - h.startTick : h.finalDuration;
+          const durationText = h.ended ? `（持续 ${actualDuration} 格）` : '（未结束）';
+          
+          let effectDetails = '';
+          if (h.responseName && h.effectMods) {
+            const mods = [];
+            if (h.effectMods.durationDelta !== undefined) {
+              mods.push(`⏱️ 持续时间: ${h.originalDuration} → ${h.finalDuration} 格`);
+            }
+            if (h.effectMods.demandMultiplier !== undefined && h.finalEffect.demandMultiplier) {
+              mods.push(`📈 需求倍率: ${h.originalEffect.demandMultiplier}x → ${h.finalEffect.demandMultiplier}x`);
+            }
+            if (h.effectMods.energyMultiplierDelta !== undefined && h.finalEffect.energyMultiplier) {
+              mods.push(`💤 体力消耗: ${h.originalEffect.energyMultiplier}x → ${h.finalEffect.energyMultiplier}x`);
+            }
+            if (h.effectMods.partialAccess) {
+              mods.push(`🔧 货架: 完全禁用 → 部分可用`);
+            }
+            if (h.effectMods.energySaveDuring) {
+              mods.push(`💨 仓库: 完全封锁 → 体力消耗减半`);
+            }
+            if (h.effectMods.energyCost !== undefined) {
+              mods.push(`⚡ 即时消耗: -${h.effectMods.energyCost} 体力`);
+            }
+            if (mods.length > 0) {
+              effectDetails = `<br><span style="color:#5a7a5a;font-size:11px;">${mods.join(' | ')}</span>`;
+            }
+          }
+          
+          const responseText = h.responseName 
+            ? `<span style="color:#8b6914;font-size:12px;">🛡️ ${h.responseIcon || ''} ${h.responseName}${h.responseDesc ? ` — ${h.responseDesc}` : ''}</span>` 
+            : `<span style="color:#888;font-size:12px;">🤷 未选择应对措施</span>`;
+          
           return `
-          <div class="result-goal-item" style="background:#f5efe0;">
-            <span>${icon} ${h.name}</span>
-            <span class="reward-tag">第 ${h.startTick} 格触发 ${duration}</span>
+          <div class="result-goal-item result-event-item" style="background:#f5efe0;">
+            <span>
+              ${icon} <strong>${h.name}</strong>
+              <br>${responseText}
+              ${effectDetails}
+            </span>
+            <span class="reward-tag">第 ${h.startTick} 格触发 ${durationText}</span>
           </div>
         `}).join('')}
       </div>
@@ -4269,6 +4671,7 @@ function renderBoard() {
           const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
           if (shelfRatio <= lowThreshold) tile.classList.add("shelf-low");
           if (isShelfBlocked(shelf)) tile.classList.add("shelf-broken");
+          if (isShelfPartialAccess(shelf)) tile.classList.add("shelf-partial");
           if (editor.active && editor.selectedShelfId === shelf.id) {
             tile.classList.add("editor-selected");
           }
@@ -4393,13 +4796,19 @@ function renderShelves() {
     const ratio = Math.round((shelf.stock / shelf.max) * 100);
     const lowThreshold = hasAbility("earlyAlert") ? 50 : 35;
     const blocked = isShelfBlocked(shelf);
+    const partial = isShelfPartialAccess(shelf);
     const nameText = blocked
       ? `${shelf.id} ${goods[shelf.good].name} ⚠️故障`
-      : `${shelf.id} ${goods[shelf.good].name}`;
+      : partial
+        ? `${shelf.id} ${goods[shelf.good].name} 🔧受限`
+        : `${shelf.id} ${goods[shelf.good].name}`;
     const stockText = blocked ? `无法使用` : `${shelf.stock}/${shelf.max}`;
     if (blocked) {
       card.style.borderColor = "#d45f4c";
       card.style.background = "#2a1e1e";
+    } else if (partial) {
+      card.style.borderColor = "#e7b951";
+      card.style.background = "#2a261e";
     }
     card.innerHTML = `<strong>${nameText}</strong><span>${stockText}</span><div class="meter ${ratio <= lowThreshold || blocked ? "low" : ""}"><span style="width:${blocked ? 0 : ratio}%"></span></div>`;
     shelfListEl.appendChild(card);
