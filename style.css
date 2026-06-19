@@ -4876,7 +4876,7 @@ h2 {
 
 .night-report-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -4919,6 +4919,15 @@ h2 {
 
 .worst-good-card .report-summary-label {
   color: #e8a89c;
+}
+
+.worst-shelf-card {
+  background: linear-gradient(135deg, rgba(230, 126, 34, 0.15) 0%, rgba(230, 126, 34, 0.05) 100%);
+  border-color: #7a4f1a;
+}
+
+.worst-shelf-card .report-summary-label {
+  color: #e8c39c;
 }
 
 .night-report-section-title {
@@ -4996,6 +5005,11 @@ h2 {
   background: #eafaf1;
 }
 
+.timeline-item.goal_set .timeline-dot {
+  border-color: #1abc9c;
+  background: #e8f8f5;
+}
+
 .timeline-item.upgrade .timeline-dot {
   border-color: #3498db;
   background: #e8f4f8;
@@ -5069,6 +5083,19 @@ h2 {
 .timeline-badge.upgrade {
   background: rgba(52, 152, 219, 0.2);
   color: #3498db;
+}
+
+.timeline-badge.goal_set {
+  background: rgba(26, 188, 156, 0.2);
+  color: #1abc9c;
+}
+
+.night-report-stats-subtitle {
+  font-size: 13px;
+  color: #a8b8ac;
+  font-weight: 600;
+  margin-bottom: 8px;
+  margin-top: 4px;
 }
 
 .night-report-stats-section {
@@ -5182,7 +5209,13 @@ h2 {
   margin: 0;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
+  .night-report-summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
   .night-report-summary {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -5204,7 +5237,7 @@ h2 {
   }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 380px) {
   .night-report-summary {
     grid-template-columns: 1fr 1fr;
   }

@@ -262,11 +262,14 @@ const nightReportReplayBtn = document.getElementById("nightReportReplayBtn");
 const nightReportSubtitle = document.getElementById("nightReportSubtitle");
 const nightReportTimeline = document.getElementById("nightReportTimeline");
 const nightReportStats = document.getElementById("nightReportStats");
+const nightReportShelfStats = document.getElementById("nightReportShelfStats");
 const reportFinalScore = document.getElementById("reportFinalScore");
 const reportServiceRate = document.getElementById("reportServiceRate");
 const reportMisses = document.getElementById("reportMisses");
 const reportWorstIcon = document.getElementById("reportWorstIcon");
 const reportWorstLabel = document.getElementById("reportWorstLabel");
+const reportWorstShelfIcon = document.getElementById("reportWorstShelfIcon");
+const reportWorstShelfLabel = document.getElementById("reportWorstShelfLabel");
 
 const nightReportData = {
   generated: false,
@@ -2569,6 +2572,12 @@ function deepCloneStateForReplay(s) {
       shelfStatsClone[k] = { ...s.sessionShelfStats[k] };
     });
   }
+  const shelfMissClone = {};
+  if (s.sessionShelfMissCount) {
+    Object.keys(s.sessionShelfMissCount).forEach(k => {
+      shelfMissClone[k] = s.sessionShelfMissCount[k];
+    });
+  }
   return {
     minute: s.minute,
     energy: s.energy,
@@ -2586,6 +2595,7 @@ function deepCloneStateForReplay(s) {
     sessionSalesCount: { ...s.sessionSalesCount },
     sessionMissCount: { ...s.sessionMissCount },
     sessionShelfStats: shelfStatsClone,
+    sessionShelfMissCount: shelfMissClone,
     goals: s.goals.map(g => ({
       ...g
     })),
@@ -2696,6 +2706,12 @@ function replayApplyFrame(index) {
       state.sessionShelfStats[k] = { ...frame.sessionShelfStats[k] };
     });
   }
+  state.sessionShelfMissCount = {};
+  if (frame.sessionShelfMissCount) {
+    Object.keys(frame.sessionShelfMissCount).forEach(k => {
+      state.sessionShelfMissCount[k] = frame.sessionShelfMissCount[k];
+    });
+  }
   state.goals = frame.goals.map(g => ({ ...g }));
   state.customers = {
     incoming: frame.customers.incoming.map(c => ({ ...c })),
@@ -2757,7 +2773,8 @@ function replayNextFrame() {
     replayApplyFrame(replayPlayer.data.frames.length - 1);
     replayPausePlayback();
     if (replayPlayer.data.resultData) {
-      resultEl.innerHTML = replayPlayer.data.resultData;
+      const rd = replayPlayer.data.resultData;
+      resultEl.innerHTML = typeof rd === 'string' ? rd : (rd.html || '');
       resultEl.classList.remove("hidden");
       bindResultButtonsForReplay();
     }
@@ -2905,6 +2922,12 @@ function replayExitMode() {
     if (saved.sessionShelfStats) {
       Object.keys(saved.sessionShelfStats).forEach(k => {
         state.sessionShelfStats[k] = { ...saved.sessionShelfStats[k] };
+      });
+    }
+    state.sessionShelfMissCount = {};
+    if (saved.sessionShelfMissCount) {
+      Object.keys(saved.sessionShelfMissCount).forEach(k => {
+        state.sessionShelfMissCount[k] = saved.sessionShelfMissCount[k];
       });
     }
     state.goals = saved.goals.map(g => ({ ...g }));
@@ -3549,6 +3572,7 @@ function freshState(trainingMode = false) {
     sessionSalesCount: initGoodObj(null, 0),
     missCount: initGoodObj(missCount, 0),
     sessionMissCount: initGoodObj(null, 0),
+    sessionShelfMissCount: {},
     maxSessionSales: initGoodObj(maxSession, 0),
     shelfStats: initShelfStats(shelfStats),
     sessionShelfStats: initShelfStats(null),
@@ -3981,6 +4005,7 @@ function generateNightReportFromReplay(replayData) {
   const frames = replayData.frames;
   const levelId = replayData.levelId || 1;
   const level = levels.find(l => l.id === levelId) || levels[0];
+  const resultInfo = replayData.resultData && typeof replayData.resultData === 'object' ? replayData.resultData : null;
 
   const timelineEvents = [];
   let firstMiss = null;
@@ -3991,7 +4016,18 @@ function generateNightReportFromReplay(replayData) {
   let goalAchievements = [];
   const eventStartTimes = {};
 
+  const firstFrame = frames[0];
   const lastFrame = frames[frames.length - 1];
+
+  if (firstFrame && firstFrame.goals && firstFrame.goals.length > 0) {
+    const goalTexts = firstFrame.goals.map(g => `${g.completed ? '✓' : (g.failed ? '✗' : '○')} ${g.title}`).join('、');
+    timelineEvents.push({
+      type: 'goal_set',
+      tick: 0,
+      title: '开局目标',
+      desc: goalTexts
+    });
+  }
 
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
@@ -4129,6 +4165,22 @@ function generateNightReportFromReplay(replayData) {
     });
   }
 
+  if (resultInfo && resultInfo.leveledUp && resultInfo.newLevel) {
+    const lastTick = Math.floor(lastFrame.minute / 5);
+    const newLvlInfo = clerkLevels.find(cl => cl.level === resultInfo.newLevel);
+    const prevLvlInfo = clerkLevels.find(cl => cl.level === resultInfo.prevLevel);
+    let upgradeDesc = `${prevLvlInfo ? prevLvlInfo.icon + ' ' + prevLvlInfo.title : 'Lv.' + resultInfo.prevLevel} → ${newLvlInfo ? newLvlInfo.icon + ' ' + newLvlInfo.title : 'Lv.' + resultInfo.newLevel}`;
+    if (resultInfo.newAbility && resultInfo.newAbility.ability) {
+      upgradeDesc += `，解锁「${resultInfo.newAbility.ability.name}」`;
+    }
+    timelineEvents.push({
+      type: 'upgrade',
+      tick: lastTick,
+      title: '🎉 店员升级',
+      desc: upgradeDesc
+    });
+  }
+
   const lastTick = Math.floor(lastFrame.minute / 5);
   timelineEvents.push({
     type: 'end',
@@ -4150,13 +4202,22 @@ function generateNightReportFromReplay(replayData) {
     }
   }
 
-  let worstShelf = null;
-  let worstShelfMisses = 0;
   let totalShelfSales = {};
   if (lastFrame.sessionShelfStats) {
     for (const goodKey in lastFrame.sessionShelfStats) {
       for (const shelfId in lastFrame.sessionShelfStats[goodKey]) {
         totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + lastFrame.sessionShelfStats[goodKey][shelfId];
+      }
+    }
+  }
+
+  let worstShelf = null;
+  let worstShelfMisses = 0;
+  if (lastFrame.sessionShelfMissCount) {
+    for (const sid in lastFrame.sessionShelfMissCount) {
+      if (lastFrame.sessionShelfMissCount[sid] > worstShelfMisses) {
+        worstShelfMisses = lastFrame.sessionShelfMissCount[sid];
+        worstShelf = sid;
       }
     }
   }
@@ -4169,6 +4230,20 @@ function generateNightReportFromReplay(replayData) {
       icon: goods[worstGood].icon,
       missCount: worstGoodMisses,
       saleCount: lastFrame.sessionSalesCount ? (lastFrame.sessionSalesCount[worstGood] || 0) : 0
+    };
+  }
+
+  let worstShelfInfo = null;
+  if (worstShelf && worstShelfMisses > 0) {
+    const shelfGoodKey = level.shelves.find(s => s.id === worstShelf)?.good;
+    const shelfGood = shelfGoodKey ? goods[shelfGoodKey] : null;
+    worstShelfInfo = {
+      id: worstShelf,
+      goodKey: shelfGoodKey,
+      goodName: shelfGood ? shelfGood.name : '',
+      goodIcon: shelfGood ? shelfGood.icon : '🗄️',
+      missCount: worstShelfMisses,
+      saleCount: totalShelfSales[worstShelf] || 0
     };
   }
 
@@ -4187,6 +4262,24 @@ function generateNightReportFromReplay(replayData) {
   });
   goodStats.sort((a, b) => b.missCount - a.missCount);
 
+  const shelfStats = [];
+  if (level.shelves) {
+    level.shelves.forEach(shelf => {
+      const good = goods[shelf.good];
+      const missCount = lastFrame.sessionShelfMissCount ? (lastFrame.sessionShelfMissCount[shelf.id] || 0) : 0;
+      const saleCount = totalShelfSales[shelf.id] || 0;
+      shelfStats.push({
+        id: shelf.id,
+        goodKey: shelf.good,
+        goodName: good ? good.name : '',
+        goodIcon: good ? good.icon : '🗄️',
+        missCount: missCount,
+        saleCount: saleCount
+      });
+    });
+  }
+  shelfStats.sort((a, b) => b.missCount - a.missCount);
+
   const served = lastFrame.customers ? lastFrame.customers.servedCount : 0;
   const missed = lastFrame.customers ? lastFrame.customers.missedCount : 0;
   const total = served + missed;
@@ -4195,8 +4288,10 @@ function generateNightReportFromReplay(replayData) {
   return {
     timelineEvents: timelineEvents,
     worstGood: worstGoodInfo,
+    worstShelf: worstShelfInfo,
     goodStats: goodStats,
-    finalScore: lastFrame.sales + (lastFrame.energy || 0) * 2 - lastFrame.misses * 15,
+    shelfStats: shelfStats,
+    finalScore: resultInfo && resultInfo.totalFinalScore !== undefined ? resultInfo.totalFinalScore : (lastFrame.sales + (lastFrame.energy || 0) * 2 - lastFrame.misses * 15),
     serviceRate: serviceRate,
     misses: lastFrame.misses,
     sales: lastFrame.sales,
@@ -4216,9 +4311,37 @@ function generateNightReportFromState() {
   const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
-  const finalScore = baseScore + goalsBonus;
+  let schedulingBonus = 0;
+  if (schedulingState.active && schedulingState.selectedStrategy) {
+    schedulingBonus = calculateSchedulingBonus(serviceRate, missed);
+  }
+  const finalScore = baseScore + goalsBonus + schedulingBonus;
+
+  const clerkData = loadClerkData();
+  const expGained = Math.max(10, Math.floor(finalScore * 0.3));
+  const totalExp = clerkData.exp + expGained;
+  const prevLevel = clerkData.level;
+  let newLevel = prevLevel;
+  for (let i = clerkLevels.length - 1; i >= 0; i--) {
+    if (totalExp >= clerkLevels[i].expRequired) {
+      newLevel = clerkLevels[i].level;
+      break;
+    }
+  }
+  const leveledUp = newLevel > prevLevel;
+  const newLevelInfo = leveledUp ? clerkLevels.find(cl => cl.level === newLevel) : null;
 
   const timelineEvents = [];
+
+  if (state.goals && state.goals.length > 0) {
+    const goalTexts = state.goals.map(g => `${g.completed ? '✓' : (g.failed ? '✗' : '○')} ${g.title}`).join('、');
+    timelineEvents.push({
+      type: 'goal_set',
+      tick: 0,
+      title: '开局目标',
+      desc: goalTexts
+    });
+  }
 
   timelineEvents.push({
     type: 'start',
@@ -4233,8 +4356,8 @@ function generateNightReportFromState() {
         timelineEvents.push({
           type: 'goal',
           tick: Math.floor(state.minute / 5),
-          title: `🎯 目标：${goal.title}`,
-          desc: goal.completed ? `已达成，+${goal.reward} 分` : '未达成'
+          title: `🎯 目标达成：${goal.title}`,
+          desc: `已达成，+${goal.reward} 分`
         });
       }
     });
@@ -4250,6 +4373,27 @@ function generateNightReportFromState() {
           title: `${template.icon} ${template.name}`,
           desc: evt.responseName ? `选择了「${evt.responseName}」应对策略` : '事件突发发生'
         });
+      }
+    });
+  }
+
+  if (leveledUp && newLevelInfo) {
+    const lastTick = Math.floor(state.minute / 5);
+    const prevLvlInfo = clerkLevels.find(cl => cl.level === prevLevel);
+    let upgradeDesc = `${prevLvlInfo ? prevLvlInfo.icon + ' ' + prevLvlInfo.title : 'Lv.' + prevLevel} → ${newLevelInfo.icon} ${newLevelInfo.title}`;
+    if (newLevelInfo.ability) {
+      upgradeDesc += `，解锁「${newLevelInfo.ability.name}」`;
+    }
+    timelineEvents.push({
+      type: 'upgrade',
+      tick: lastTick,
+      title: '🎉 店员升级',
+      desc: upgradeDesc
+    });
+  } else {
+    timelineEvents.forEach(ev => {
+      if (ev.type === 'upgrade') {
+        ev._remove = true;
       }
     });
   }
@@ -4278,12 +4422,66 @@ function generateNightReportFromState() {
   });
   goodStats.sort((a, b) => b.missCount - a.missCount);
 
-  let worstGood = goodStats.length > 0 ? goodStats[0] : null;
+  let worstGood = goodStats.length > 0 && goodStats[0].missCount > 0 ? goodStats[0] : null;
+
+  let totalShelfSales = {};
+  if (state.sessionShelfStats) {
+    for (const goodKey in state.sessionShelfStats) {
+      for (const shelfId in state.sessionShelfStats[goodKey]) {
+        totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + state.sessionShelfStats[goodKey][shelfId];
+      }
+    }
+  }
+
+  let worstShelf = null;
+  let worstShelfMisses = 0;
+  if (state.sessionShelfMissCount) {
+    for (const sid in state.sessionShelfMissCount) {
+      if (state.sessionShelfMissCount[sid] > worstShelfMisses) {
+        worstShelfMisses = state.sessionShelfMissCount[sid];
+        worstShelf = sid;
+      }
+    }
+  }
+
+  let worstShelfInfo = null;
+  if (worstShelf && worstShelfMisses > 0) {
+    const shelfGoodKey = level.shelves.find(s => s.id === worstShelf)?.good;
+    const shelfGood = shelfGoodKey ? goods[shelfGoodKey] : null;
+    worstShelfInfo = {
+      id: worstShelf,
+      goodKey: shelfGoodKey,
+      goodName: shelfGood ? shelfGood.name : '',
+      goodIcon: shelfGood ? shelfGood.icon : '🗄️',
+      missCount: worstShelfMisses,
+      saleCount: totalShelfSales[worstShelf] || 0
+    };
+  }
+
+  const shelfStats = [];
+  if (level.shelves) {
+    level.shelves.forEach(shelf => {
+      const good = goods[shelf.good];
+      const missCount = state.sessionShelfMissCount ? (state.sessionShelfMissCount[shelf.id] || 0) : 0;
+      const saleCount = totalShelfSales[shelf.id] || 0;
+      shelfStats.push({
+        id: shelf.id,
+        goodKey: shelf.good,
+        goodName: good ? good.name : '',
+        goodIcon: good ? good.icon : '🗄️',
+        missCount: missCount,
+        saleCount: saleCount
+      });
+    });
+  }
+  shelfStats.sort((a, b) => b.missCount - a.missCount);
 
   return {
     timelineEvents: timelineEvents,
     worstGood: worstGood,
+    worstShelf: worstShelfInfo,
     goodStats: goodStats,
+    shelfStats: shelfStats,
     finalScore: finalScore,
     serviceRate: serviceRate,
     misses: state.misses,
@@ -4332,6 +4530,7 @@ function getTimelineBadgeText(type) {
     peak: '高峰',
     pressure: '压力',
     goal: '目标',
+    goal_set: '目标',
     upgrade: '升级'
   };
   return map[type] || '';
@@ -4375,6 +4574,45 @@ function renderNightReportStats(goodStats) {
   nightReportStats.innerHTML = html;
 }
 
+function renderNightReportShelfStats(shelfStats) {
+  if (!nightReportShelfStats) return;
+  if (!shelfStats || shelfStats.length === 0) {
+    nightReportShelfStats.innerHTML = '<p style="color:#8ba390;text-align:center;padding:20px;">暂无货架统计</p>';
+    return;
+  }
+
+  const maxMiss = Math.max(...shelfStats.map(s => s.missCount), 1);
+  const maxSale = Math.max(...shelfStats.map(s => s.saleCount), 1);
+
+  const html = shelfStats.map((shelf, idx) => {
+    const isWorst = idx === 0 && shelf.missCount > 0;
+    const missPercent = (shelf.missCount / maxMiss) * 100;
+    const salePercent = (shelf.saleCount / maxSale) * 100;
+
+    return `
+      <div class="report-stat-row ${isWorst ? 'worst' : ''}">
+        <div class="report-stat-left">
+          <div class="report-stat-icon">${shelf.goodIcon}</div>
+          <div class="report-stat-info">
+            <div class="report-stat-name">${shelf.id} ${isWorst ? '<span style="color:#e74c3c;font-size:11px;">最拖后腿</span>' : ''}</div>
+            <div class="report-stat-detail">${shelf.goodName || '—'} · 售出 ${shelf.saleCount} 件 · 缺货 ${shelf.missCount} 次</div>
+          </div>
+        </div>
+        <div class="report-stat-right">
+          <div class="report-stat-bar">
+            <div class="report-stat-bar-fill sale" style="width:${salePercent}%"></div>
+          </div>
+          <div class="report-stat-bar" style="margin-top:3px;">
+            <div class="report-stat-bar-fill miss" style="width:${missPercent}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  nightReportShelfStats.innerHTML = html;
+}
+
 function openNightReport(reportData) {
   if (!reportData) {
     reportData = generateNightReportFromState();
@@ -4383,6 +4621,7 @@ function openNightReport(reportData) {
   nightReportData.generated = true;
   nightReportData.timelineEvents = reportData.timelineEvents;
   nightReportData.worstGood = reportData.worstGood;
+  nightReportData.worstShelf = reportData.worstShelf;
   nightReportData.finalScore = reportData.finalScore;
   nightReportData.serviceRate = reportData.serviceRate;
   nightReportData.misses = reportData.misses;
@@ -4402,8 +4641,19 @@ function openNightReport(reportData) {
     reportWorstLabel.textContent = '表现优秀';
   }
 
+  if (reportWorstShelfIcon && reportWorstShelfLabel) {
+    if (reportData.worstShelf && reportData.worstShelf.missCount > 0) {
+      reportWorstShelfIcon.textContent = reportData.worstShelf.goodIcon || '🗄️';
+      reportWorstShelfLabel.textContent = reportData.worstShelf.id;
+    } else {
+      reportWorstShelfIcon.textContent = '✨';
+      reportWorstShelfLabel.textContent = '货架稳定';
+    }
+  }
+
   renderNightReportTimeline(reportData.timelineEvents);
   renderNightReportStats(reportData.goodStats);
+  renderNightReportShelfStats(reportData.shelfStats);
 
   if (replayHasSaved()) {
     nightReportReplayBtn.classList.remove('hidden');
@@ -5259,6 +5509,10 @@ function processCustomerQueue() {
       state.misses += 1;
       state.customers.missedCount += 1;
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
+      const shelf = pickBestShelfForGood(customer.goodKey);
+      if (shelf) {
+        state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
+      }
       recordActualCustomer(customer.goodKey, currentTick, false);
       addLog(`👥 店内太拥挤，顾客#${customer.id}直接离开，计入缺货！`);
     }
@@ -5284,6 +5538,7 @@ function processCustomerQueue() {
         recordActualCustomer(customer.goodKey, currentTick, false);
         const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
         if (shelf) {
+          state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
           addLog(`😠 顾客#${customer.id}等了太久，${shelf.id}货架缺${goods[customer.goodKey].name}，愤怒离开！`);
         } else {
           addLog(`😠 顾客#${customer.id}等了太久，没有买到${goods[customer.goodKey].name}，愤怒离开！`);
@@ -5499,6 +5754,10 @@ function finish(reason) {
       state.customers.missedCount += 1;
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       recordActualCustomer(customer.goodKey, currentTick, false);
+      const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : pickBestShelfForGood(customer.goodKey);
+      if (shelf) {
+        state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
+      }
       const good = goods[customer.goodKey];
       if (isTraining) {
         addLog(`🚪 顾客#${customer.id}因训练结束离开，没买到${good.icon}${good.name}。`);
@@ -5724,8 +5983,24 @@ function finish(reason) {
   resultEl.innerHTML = resultHtml;
   resultEl.classList.remove("hidden");
 
+  const resultInfo = {
+    html: resultHtml,
+    goals: state.goals.map(g => ({ ...g })),
+    leveledUp: leveledUp,
+    prevLevel: prevLevel,
+    newLevel: newLevel,
+    expGained: expGained,
+    totalFinalScore: totalFinalScore,
+    newAbility: newAbility ? {
+      level: newAbility.level,
+      title: newAbility.title,
+      icon: newAbility.icon,
+      ability: newAbility.ability ? { name: newAbility.ability.name, desc: newAbility.ability.desc } : null
+    } : null
+  };
+
   replayRecordFrame('finish');
-  replayStopRecording(resultHtml);
+  replayStopRecording(resultInfo);
   updateReplayButtonState();
 
   const resultReportBtn = document.getElementById("resultReportBtn");
