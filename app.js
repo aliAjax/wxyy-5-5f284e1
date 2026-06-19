@@ -628,11 +628,45 @@ const schedulingState = {
 
 const PREDICTION_LOOKAHEAD = 6;
 
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+}
+
+function computeForecastCacheKey() {
+  const activeEventIds = (state.events.active || []).map(e => `${e.id}-${e.endTick}`).sort().join('|');
+  const warningKey = state.events.warning ? `${state.events.warning.templateId}-${state.events.warning.remainingTicks}` : '';
+  const stocks = state.shelves.map(s => `${s.id}:${s.stock}:${s._broken || 0}`).join('|');
+  const waiting = state.customers.waiting.map(c => `${c.goodKey}-${c.maxWait - c.waited}`).sort().join(',');
+  const incoming = state.customers.incoming.map(c => `${c.goodKey}-${c.arrivalTick}`).sort().join(',');
+  return [
+    Math.floor(state.minute / 5),
+    state.running,
+    schedulingState.active,
+    schedulingState.selectedStrategy || 'none',
+    state.warehouseBlocked ? 1 : 0,
+    activeEventIds,
+    warningKey,
+    stocks,
+    waiting,
+    incoming
+  ].join('§');
+}
+
 function computeForecast() {
+  const cacheKey = computeForecastCacheKey();
+  if (state._forecastCache && state._forecastCache.key === cacheKey) {
+    return state._forecastCache.value;
+  }
+
   const level = getCurrentLevel();
   const goodKeys = getCurrentLevelGoodKeys();
   const currentTick = Math.floor(state.minute / 5);
   const totalTicks = Math.ceil(level.duration / 5);
+  const rand = seededRandom(currentTick * 1000 + (schedulingState.selectedStrategy ? schedulingState.selectedStrategy.length : 0) + goodKeys.length);
 
   const queuePressure = getPressureLevel();
   const waitingCount = state.customers.waiting.length;
@@ -653,7 +687,7 @@ function computeForecast() {
       intensity = curveSeg.intensity;
     } else {
       const progress = targetTick / totalTicks;
-      intensity = 0.8 + progress * 0.4 + (Math.random() - 0.5) * 0.2;
+      intensity = 0.8 + progress * 0.4 + (rand() - 0.5) * 0.2;
     }
 
     if (i === 0) {
@@ -685,7 +719,7 @@ function computeForecast() {
       intensity *= 1.08;
     }
 
-    intensity += (Math.random() - 0.5) * 0.12;
+    intensity += (rand() - 0.5) * 0.12;
     intensity = Math.max(0.3, Math.min(2.8, intensity));
 
     let barLevel;
@@ -899,7 +933,7 @@ function computeForecast() {
     });
   }
 
-  return {
+  const result = {
     trendBars,
     overallPressureLevel,
     pressureLabel: pressureLabels[overallPressureLevel],
@@ -908,6 +942,8 @@ function computeForecast() {
     goodForecasts,
     eventHints
   };
+  state._forecastCache = { key: cacheKey, value: result };
+  return result;
 }
 
 function renderPredictionPanel() {
@@ -3474,7 +3510,8 @@ function freshState(trainingMode = false) {
     },
     warehouseBlocked: false,
     emergencySupplyUsed: 0,
-    _isTraining: trainingMode
+    _isTraining: trainingMode,
+    _forecastCache: null
   };
 }
 
