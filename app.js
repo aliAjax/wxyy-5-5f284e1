@@ -3565,7 +3565,8 @@ function tick() {
   replayRecordFrame('tick');
   const effectiveDuration = getTrainingConfigOverride('duration', getCurrentLevel().duration);
   if (state.minute >= effectiveDuration) {
-    finish("训练时间到，本轮练习结束。");
+    const isTraining = state._isTraining || training.active;
+    finish(isTraining ? "训练时间到，本轮练习结束。" : "天快亮了，夜班结束。");
   }
   render();
 }
