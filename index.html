@@ -391,6 +391,52 @@
     </div>
   </div>
 
+  <div id="nightReportOverlay" class="night-report-overlay hidden">
+    <div class="night-report-dialog">
+      <div class="night-report-header">
+        <div>
+          <h2>📰 夜班日报</h2>
+          <p class="night-report-subtitle" id="nightReportSubtitle">第 1 关 · 深夜便利店</p>
+        </div>
+        <button id="nightReportCloseBtn" class="night-report-close" type="button">✕</button>
+      </div>
+      <div class="night-report-body">
+        <div class="night-report-summary">
+          <div class="report-summary-card">
+            <div class="report-summary-value" id="reportFinalScore">0</div>
+            <div class="report-summary-label">最终评分</div>
+          </div>
+          <div class="report-summary-card">
+            <div class="report-summary-value" id="reportServiceRate">0%</div>
+            <div class="report-summary-label">服务满意率</div>
+          </div>
+          <div class="report-summary-card">
+            <div class="report-summary-value" id="reportMisses">0</div>
+            <div class="report-summary-label">缺货次数</div>
+          </div>
+          <div class="report-summary-card worst-good-card">
+            <div class="report-summary-icon" id="reportWorstIcon">📦</div>
+            <div class="report-summary-label" id="reportWorstLabel">最拖后腿</div>
+          </div>
+        </div>
+
+        <div class="night-report-timeline-section">
+          <h3 class="night-report-section-title">⏱️ 关键时间轴</h3>
+          <div id="nightReportTimeline" class="night-report-timeline"></div>
+        </div>
+
+        <div class="night-report-stats-section">
+          <h3 class="night-report-section-title">📊 经营数据分析</h3>
+          <div id="nightReportStats" class="night-report-stats"></div>
+        </div>
+      </div>
+      <div class="night-report-footer">
+        <button id="nightReportReplayBtn" class="secondary" type="button">🎬 查看回放</button>
+        <button id="nightReportCloseFooterBtn" class="primary" type="button">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

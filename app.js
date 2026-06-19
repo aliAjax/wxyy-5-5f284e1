@@ -255,6 +255,31 @@ const trainingResultBodyEl = document.getElementById("trainingResultBody");
 const trainingRetryBtn = document.getElementById("trainingRetryBtn");
 const trainingBackBtn = document.getElementById("trainingBackBtn");
 
+const nightReportOverlay = document.getElementById("nightReportOverlay");
+const nightReportCloseBtn = document.getElementById("nightReportCloseBtn");
+const nightReportCloseFooterBtn = document.getElementById("nightReportCloseFooterBtn");
+const nightReportReplayBtn = document.getElementById("nightReportReplayBtn");
+const nightReportSubtitle = document.getElementById("nightReportSubtitle");
+const nightReportTimeline = document.getElementById("nightReportTimeline");
+const nightReportStats = document.getElementById("nightReportStats");
+const reportFinalScore = document.getElementById("reportFinalScore");
+const reportServiceRate = document.getElementById("reportServiceRate");
+const reportMisses = document.getElementById("reportMisses");
+const reportWorstIcon = document.getElementById("reportWorstIcon");
+const reportWorstLabel = document.getElementById("reportWorstLabel");
+
+const nightReportData = {
+  generated: false,
+  timelineEvents: [],
+  worstGood: null,
+  worstShelf: null,
+  finalScore: 0,
+  serviceRate: 0,
+  misses: 0,
+  levelId: null,
+  levelName: ''
+};
+
 const codexState = {
   selectedGood: null
 };
@@ -2734,10 +2759,57 @@ function replayNextFrame() {
     if (replayPlayer.data.resultData) {
       resultEl.innerHTML = replayPlayer.data.resultData;
       resultEl.classList.remove("hidden");
+      bindResultButtonsForReplay();
     }
     return;
   }
   replayApplyFrame(Math.min(nextIdx, replayPlayer.data.frames.length - 1));
+}
+
+function injectReportButtonToResult() {
+  const existingBtn = document.getElementById("resultReportBtn");
+  if (existingBtn) return;
+
+  const buttonContainer = resultEl.querySelector("div[style*='display: flex']");
+  if (!buttonContainer) return;
+
+  const reportBtn = document.createElement("button");
+  reportBtn.id = "resultReportBtn";
+  reportBtn.className = "primary";
+  reportBtn.type = "button";
+  reportBtn.style.margin = "0";
+  reportBtn.style.flex = "1";
+  reportBtn.textContent = "📰 夜班日报";
+  reportBtn.addEventListener("click", () => {
+    openNightReportFromReplay();
+  });
+
+  buttonContainer.insertBefore(reportBtn, buttonContainer.firstChild);
+}
+
+function bindResultButtonsForReplay() {
+  injectReportButtonToResult();
+
+  const resultReportBtn = document.getElementById("resultReportBtn");
+  if (resultReportBtn) {
+    resultReportBtn.addEventListener("click", () => {
+      openNightReportFromReplay();
+    });
+  }
+  const resultReplayBtn = document.getElementById("resultReplayBtn");
+  if (resultReplayBtn) {
+    resultReplayBtn.addEventListener("click", () => {
+      if (replayHasSaved()) {
+        replayEnterMode();
+      }
+    });
+  }
+  const resultRestartBtn = document.getElementById("resultRestartBtn");
+  if (resultRestartBtn) {
+    resultRestartBtn.addEventListener("click", () => {
+      resetGame();
+    });
+  }
 }
 
 function replayStartPlayback() {
@@ -2878,20 +2950,7 @@ function replayExitMode() {
 
   if (replayPlayer.savedResultHtml) {
     resultEl.innerHTML = replayPlayer.savedResultHtml;
-    const resultReplayBtn = document.getElementById("resultReplayBtn");
-    if (resultReplayBtn) {
-      resultReplayBtn.addEventListener("click", () => {
-        if (replayHasSaved()) {
-          replayEnterMode();
-        }
-      });
-    }
-    const resultRestartBtn = document.getElementById("resultRestartBtn");
-    if (resultRestartBtn) {
-      resultRestartBtn.addEventListener("click", () => {
-        resetGame();
-      });
-    }
+    bindResultButtonsForReplay();
   }
   if (replayPlayer.savedResultVisible) {
     resultEl.classList.remove("hidden");
@@ -3907,6 +3966,491 @@ function bindCodexControls() {
   });
 }
 
+function formatTickTime(tick) {
+  const totalMinutes = tick * 5;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function generateNightReportFromReplay(replayData) {
+  if (!replayData || !replayData.frames || replayData.frames.length === 0) {
+    return null;
+  }
+
+  const frames = replayData.frames;
+  const levelId = replayData.levelId || 1;
+  const level = levels.find(l => l.id === levelId) || levels[0];
+
+  const timelineEvents = [];
+  let firstMiss = null;
+  let peakCustomerFrame = null;
+  let maxCustomerCount = 0;
+  let peakPressureFrame = null;
+  let maxPressureLevel = -1;
+  let goalAchievements = [];
+  const eventStartTimes = {};
+
+  const lastFrame = frames[frames.length - 1];
+
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    const tick = Math.floor(frame.minute / 5);
+
+    if (i === 0) {
+      timelineEvents.push({
+        type: 'start',
+        tick: tick,
+        title: '夜班开始',
+        desc: '卷帘门拉起，深夜便利店开始营业'
+      });
+    }
+
+    const waitingCount = frame.customers ? frame.customers.waiting.length : 0;
+    if (waitingCount > maxCustomerCount) {
+      maxCustomerCount = waitingCount;
+      peakCustomerFrame = frame;
+    }
+
+    let pressureLevel = 0;
+    if (frame.customers && frame.customers.waiting) {
+      const waiting = frame.customers.waiting.length;
+      const urgentCount = frame.customers.waiting.filter(c => {
+        const remaining = c.maxWait - c.waited;
+        return remaining <= 1;
+      }).length;
+      if (waiting === 0) pressureLevel = 0;
+      else if (waiting <= 2 && urgentCount === 0) pressureLevel = 1;
+      else if (waiting <= 4 && urgentCount <= 1) pressureLevel = 2;
+      else if (waiting <= 6) pressureLevel = 3;
+      else pressureLevel = 4;
+    }
+    if (pressureLevel > maxPressureLevel) {
+      maxPressureLevel = pressureLevel;
+      peakPressureFrame = frame;
+    }
+
+    if (frame.misses > 0 && firstMiss === null) {
+      if (i > 0) {
+        const prevFrame = frames[i - 1];
+        if (prevFrame.misses !== frame.misses) {
+          firstMiss = { tick: tick, frame: frame };
+        }
+      }
+    }
+
+    if (frame.goals && frame.goals.length > 0) {
+      frame.goals.forEach((goal, idx) => {
+        if (goal.completed) {
+          if (!goalAchievements.find(g => g.title === goal.title)) {
+            goalAchievements.push({
+              tick: tick,
+              title: goal.title,
+              reward: goal.reward
+            });
+          }
+        }
+      });
+    }
+
+    if (frame.events && frame.events.history) {
+      frame.events.history.forEach(evt => {
+        if (!eventStartTimes[evt.id] && evt.startTick !== undefined) {
+          eventStartTimes[evt.id] = {
+            startTick: evt.startTick,
+            event: evt
+          };
+        }
+      });
+    }
+  }
+
+  if (firstMiss) {
+    const frame = firstMiss.frame;
+    let missGoodKey = null;
+    let missCount = 0;
+    if (frame.sessionMissCount) {
+      for (const key in frame.sessionMissCount) {
+        if (frame.sessionMissCount[key] > missCount) {
+          missCount = frame.sessionMissCount[key];
+          missGoodKey = key;
+        }
+      }
+    }
+    const good = missGoodKey ? goods[missGoodKey] : null;
+    timelineEvents.push({
+      type: 'miss',
+      tick: firstMiss.tick,
+      title: '第一次缺货',
+      desc: good ? `顾客因 ${good.icon}${good.name} 缺货而离开` : '有顾客因缺货离开'
+    });
+  }
+
+  Object.values(eventStartTimes).forEach(item => {
+    const evt = item.event;
+    const template = eventTemplates[evt.id];
+    if (template) {
+      timelineEvents.push({
+        type: 'event',
+        tick: item.startTick,
+        title: `${template.icon} ${template.name}`,
+        desc: evt.responseName ? `选择了「${evt.responseName}」应对策略` : '事件突发发生'
+      });
+    }
+  });
+
+  goalAchievements.forEach(goal => {
+    timelineEvents.push({
+      type: 'goal',
+      tick: goal.tick,
+      title: `🎯 目标达成：${goal.title}`,
+      desc: `获得 +${goal.reward} 分奖励`
+    });
+  });
+
+  if (peakCustomerFrame && maxCustomerCount > 0) {
+    const tick = Math.floor(peakCustomerFrame.minute / 5);
+    timelineEvents.push({
+      type: 'peak',
+      tick: tick,
+      title: '服务高峰',
+      desc: `店内同时有 ${maxCustomerCount} 位顾客等待`
+    });
+  }
+
+  if (peakPressureFrame && maxPressureLevel >= 2) {
+    const tick = Math.floor(peakPressureFrame.minute / 5);
+    const pressureLabels = ['轻松', '平稳', '忙碌', '紧张', '爆满!'];
+    timelineEvents.push({
+      type: 'pressure',
+      tick: tick,
+      title: '最高压力时刻',
+      desc: `压力等级达到「${pressureLabels[maxPressureLevel]}」`
+    });
+  }
+
+  const lastTick = Math.floor(lastFrame.minute / 5);
+  timelineEvents.push({
+    type: 'end',
+    tick: lastTick,
+    title: '打烊结束',
+    desc: `最终销售额 ¥${lastFrame.sales}，缺货 ${lastFrame.misses} 次`
+  });
+
+  timelineEvents.sort((a, b) => a.tick - b.tick);
+
+  let worstGood = null;
+  let worstGoodMisses = 0;
+  if (lastFrame.sessionMissCount) {
+    for (const key in lastFrame.sessionMissCount) {
+      if (lastFrame.sessionMissCount[key] > worstGoodMisses) {
+        worstGoodMisses = lastFrame.sessionMissCount[key];
+        worstGood = key;
+      }
+    }
+  }
+
+  let worstShelf = null;
+  let worstShelfMisses = 0;
+  let totalShelfSales = {};
+  if (lastFrame.sessionShelfStats) {
+    for (const goodKey in lastFrame.sessionShelfStats) {
+      for (const shelfId in lastFrame.sessionShelfStats[goodKey]) {
+        totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + lastFrame.sessionShelfStats[goodKey][shelfId];
+      }
+    }
+  }
+
+  let worstGoodInfo = null;
+  if (worstGood && goods[worstGood]) {
+    worstGoodInfo = {
+      key: worstGood,
+      name: goods[worstGood].name,
+      icon: goods[worstGood].icon,
+      missCount: worstGoodMisses,
+      saleCount: lastFrame.sessionSalesCount ? (lastFrame.sessionSalesCount[worstGood] || 0) : 0
+    };
+  }
+
+  const goodStats = [];
+  const goodKeys = getCurrentLevelGoodKeys ? getCurrentLevelGoodKeys() : Object.keys(goods);
+  goodKeys.forEach(key => {
+    if (goods[key]) {
+      goodStats.push({
+        key: key,
+        name: goods[key].name,
+        icon: goods[key].icon,
+        missCount: lastFrame.sessionMissCount ? (lastFrame.sessionMissCount[key] || 0) : 0,
+        saleCount: lastFrame.sessionSalesCount ? (lastFrame.sessionSalesCount[key] || 0) : 0
+      });
+    }
+  });
+  goodStats.sort((a, b) => b.missCount - a.missCount);
+
+  const served = lastFrame.customers ? lastFrame.customers.servedCount : 0;
+  const missed = lastFrame.customers ? lastFrame.customers.missedCount : 0;
+  const total = served + missed;
+  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+
+  return {
+    timelineEvents: timelineEvents,
+    worstGood: worstGoodInfo,
+    goodStats: goodStats,
+    finalScore: lastFrame.sales + (lastFrame.energy || 0) * 2 - lastFrame.misses * 15,
+    serviceRate: serviceRate,
+    misses: lastFrame.misses,
+    sales: lastFrame.sales,
+    served: served,
+    missed: missed,
+    levelId: levelId,
+    levelName: level.name,
+    levelIcon: level.icon
+  };
+}
+
+function generateNightReportFromState() {
+  const level = getCurrentLevel();
+  const served = state.customers.servedCount;
+  const missed = state.customers.missedCount;
+  const total = served + missed;
+  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+  const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
+  const goalsBonus = calcGoalsBonus();
+  const finalScore = baseScore + goalsBonus;
+
+  const timelineEvents = [];
+
+  timelineEvents.push({
+    type: 'start',
+    tick: 0,
+    title: '夜班开始',
+    desc: '卷帘门拉起，深夜便利店开始营业'
+  });
+
+  if (state.goals && state.goals.length > 0) {
+    state.goals.forEach(goal => {
+      if (goal.completed) {
+        timelineEvents.push({
+          type: 'goal',
+          tick: Math.floor(state.minute / 5),
+          title: `🎯 目标：${goal.title}`,
+          desc: goal.completed ? `已达成，+${goal.reward} 分` : '未达成'
+        });
+      }
+    });
+  }
+
+  if (state.events.history && state.events.history.length > 0) {
+    state.events.history.forEach(evt => {
+      const template = eventTemplates[evt.id];
+      if (template) {
+        timelineEvents.push({
+          type: 'event',
+          tick: evt.startTick,
+          title: `${template.icon} ${template.name}`,
+          desc: evt.responseName ? `选择了「${evt.responseName}」应对策略` : '事件突发发生'
+        });
+      }
+    });
+  }
+
+  timelineEvents.push({
+    type: 'end',
+    tick: Math.floor(state.minute / 5),
+    title: '打烊结束',
+    desc: `最终销售额 ¥${state.sales}，缺货 ${state.misses} 次`
+  });
+
+  timelineEvents.sort((a, b) => a.tick - b.tick);
+
+  const goodStats = [];
+  const goodKeys = getCurrentLevelGoodKeys();
+  goodKeys.forEach(key => {
+    if (goods[key]) {
+      goodStats.push({
+        key: key,
+        name: goods[key].name,
+        icon: goods[key].icon,
+        missCount: state.sessionMissCount ? (state.sessionMissCount[key] || 0) : 0,
+        saleCount: state.sessionSalesCount ? (state.sessionSalesCount[key] || 0) : 0
+      });
+    }
+  });
+  goodStats.sort((a, b) => b.missCount - a.missCount);
+
+  let worstGood = goodStats.length > 0 ? goodStats[0] : null;
+
+  return {
+    timelineEvents: timelineEvents,
+    worstGood: worstGood,
+    goodStats: goodStats,
+    finalScore: finalScore,
+    serviceRate: serviceRate,
+    misses: state.misses,
+    sales: state.sales,
+    served: served,
+    missed: missed,
+    levelId: currentLevelId,
+    levelName: level.name,
+    levelIcon: level.icon
+  };
+}
+
+function renderNightReportTimeline(timelineEvents) {
+  if (!timelineEvents || timelineEvents.length === 0) {
+    nightReportTimeline.innerHTML = '<p style="color:#8ba390;text-align:center;padding:20px;">暂无时间轴数据</p>';
+    return;
+  }
+
+  const html = timelineEvents.map(evt => {
+    const timeStr = formatTickTime(evt.tick);
+    const badgeClass = evt.type;
+    const badgeText = getTimelineBadgeText(evt.type);
+
+    return `
+      <div class="timeline-item ${evt.type}">
+        <div class="timeline-dot"></div>
+        <div class="timeline-time">${timeStr}</div>
+        <div class="timeline-title">
+          ${evt.title}
+          ${badgeText ? `<span class="timeline-badge ${badgeClass}">${badgeText}</span>` : ''}
+        </div>
+        <div class="timeline-desc">${evt.desc}</div>
+      </div>
+    `;
+  }).join('');
+
+  nightReportTimeline.innerHTML = html;
+}
+
+function getTimelineBadgeText(type) {
+  const map = {
+    start: '开始',
+    end: '结束',
+    miss: '缺货',
+    event: '事件',
+    peak: '高峰',
+    pressure: '压力',
+    goal: '目标',
+    upgrade: '升级'
+  };
+  return map[type] || '';
+}
+
+function renderNightReportStats(goodStats) {
+  if (!goodStats || goodStats.length === 0) {
+    nightReportStats.innerHTML = '<p style="color:#8ba390;text-align:center;padding:20px;">暂无统计数据</p>';
+    return;
+  }
+
+  const maxMiss = Math.max(...goodStats.map(g => g.missCount), 1);
+  const maxSale = Math.max(...goodStats.map(g => g.saleCount), 1);
+
+  const html = goodStats.map((good, idx) => {
+    const isWorst = idx === 0 && good.missCount > 0;
+    const missPercent = (good.missCount / maxMiss) * 100;
+    const salePercent = (good.saleCount / maxSale) * 100;
+
+    return `
+      <div class="report-stat-row ${isWorst ? 'worst' : ''}">
+        <div class="report-stat-left">
+          <div class="report-stat-icon">${good.icon}</div>
+          <div class="report-stat-info">
+            <div class="report-stat-name">${good.name} ${isWorst ? '<span style="color:#e74c3c;font-size:11px;">最拖后腿</span>' : ''}</div>
+            <div class="report-stat-detail">售出 ${good.saleCount} 件 · 缺货 ${good.missCount} 次</div>
+          </div>
+        </div>
+        <div class="report-stat-right">
+          <div class="report-stat-bar">
+            <div class="report-stat-bar-fill sale" style="width:${salePercent}%"></div>
+          </div>
+          <div class="report-stat-bar" style="margin-top:3px;">
+            <div class="report-stat-bar-fill miss" style="width:${missPercent}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  nightReportStats.innerHTML = html;
+}
+
+function openNightReport(reportData) {
+  if (!reportData) {
+    reportData = generateNightReportFromState();
+  }
+
+  nightReportData.generated = true;
+  nightReportData.timelineEvents = reportData.timelineEvents;
+  nightReportData.worstGood = reportData.worstGood;
+  nightReportData.finalScore = reportData.finalScore;
+  nightReportData.serviceRate = reportData.serviceRate;
+  nightReportData.misses = reportData.misses;
+  nightReportData.levelId = reportData.levelId;
+  nightReportData.levelName = reportData.levelName;
+
+  nightReportSubtitle.textContent = `${reportData.levelIcon || '🏪'} 第 ${reportData.levelId} 关 · ${reportData.levelName}`;
+  reportFinalScore.textContent = reportData.finalScore;
+  reportServiceRate.textContent = reportData.serviceRate + '%';
+  reportMisses.textContent = reportData.misses;
+
+  if (reportData.worstGood && reportData.worstGood.missCount > 0) {
+    reportWorstIcon.textContent = reportData.worstGood.icon;
+    reportWorstLabel.textContent = reportData.worstGood.name;
+  } else {
+    reportWorstIcon.textContent = '🎉';
+    reportWorstLabel.textContent = '表现优秀';
+  }
+
+  renderNightReportTimeline(reportData.timelineEvents);
+  renderNightReportStats(reportData.goodStats);
+
+  if (replayHasSaved()) {
+    nightReportReplayBtn.classList.remove('hidden');
+  } else {
+    nightReportReplayBtn.classList.add('hidden');
+  }
+
+  nightReportOverlay.classList.remove('hidden');
+}
+
+function closeNightReport() {
+  nightReportOverlay.classList.add('hidden');
+}
+
+function openNightReportFromReplay() {
+  const replayData = replayLoadSaved();
+  if (!replayData) {
+    addLog('没有可查看的回放数据。');
+    return;
+  }
+  const reportData = generateNightReportFromReplay(replayData);
+  if (reportData) {
+    openNightReport(reportData);
+  }
+}
+
+function bindNightReportControls() {
+  nightReportCloseBtn.addEventListener("click", closeNightReport);
+  nightReportCloseFooterBtn.addEventListener("click", closeNightReport);
+  nightReportOverlay.addEventListener("click", (e) => {
+    if (e.target === nightReportOverlay) {
+      closeNightReport();
+    }
+  });
+  nightReportReplayBtn.addEventListener("click", () => {
+    closeNightReport();
+    if (replayHasSaved()) {
+      replayEnterMode();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !nightReportOverlay.classList.contains("hidden")) {
+      closeNightReport();
+    }
+  });
+}
+
 function renderLevelName() {
   const level = getCurrentLevel();
   if (levelNameEl) {
@@ -4209,6 +4753,7 @@ function init() {
   bindSchedulingControls();
   bindSchemeControls();
   bindTrainingControls();
+  bindNightReportControls();
   updateEditorUI();
   updateReplayButtonState();
   updateEditorCurrentSchemeDisplay();
@@ -5171,7 +5716,8 @@ function finish(reason) {
     ${expHtml}
     <p style="margin-top: 12px; font-size: 18px; font-weight: 700; color: #6b5a20;">最终综合评分：<strong>${totalFinalScore}</strong>（基础 ${baseScore} + 目标奖励 +${goalsBonus}${schedulingBonus > 0 ? ' + 排班奖励 +' + schedulingBonus : ''}）</p>
     <div style="margin-top: 16px; display: flex; gap: 10px;">
-      <button id="resultReplayBtn" class="primary" type="button" style="margin: 0; flex: 1;">🎬 查看本局回放</button>
+      <button id="resultReportBtn" class="primary" type="button" style="margin: 0; flex: 1;">📰 夜班日报</button>
+      <button id="resultReplayBtn" class="secondary" type="button" style="margin: 0; flex: 1;">🎬 查看回放</button>
       <button id="resultRestartBtn" class="secondary" type="button" style="margin: 0; flex: 1;">🔄 重新开始</button>
     </div>
   `;
@@ -5182,6 +5728,13 @@ function finish(reason) {
   replayStopRecording(resultHtml);
   updateReplayButtonState();
 
+  const resultReportBtn = document.getElementById("resultReportBtn");
+  if (resultReportBtn) {
+    resultReportBtn.addEventListener("click", () => {
+      const reportData = generateNightReportFromState();
+      openNightReport(reportData);
+    });
+  }
   const resultReplayBtn = document.getElementById("resultReplayBtn");
   if (resultReplayBtn) {
     resultReplayBtn.addEventListener("click", () => {
