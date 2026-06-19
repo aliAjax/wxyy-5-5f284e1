@@ -2392,8 +2392,11 @@ const TRAINING_THEMES = {
       { title: "提前备货", content: "在货架故障/仓库缺货前，提前给其他货架补满货物作为缓冲。" }
     ],
     config: {
-      eventInterval: 6,
+      eventMinStartTick: 1,
+      eventMinGap: 2,
       eventMaxActive: 3,
+      eventBaseChance: 0.55,
+      eventLateBoost: 0.2,
       durationMultiplier: 0.9,
       customerBaseGap: 2
     }
@@ -3834,7 +3837,8 @@ function spendEnergy(amount) {
   state.energy = Math.max(0, state.energy - actualAmount);
   updateGoalProgress();
   if (state.energy === 0) {
-    finish("体力耗尽，夜班提前结束。");
+    const isTraining = state._isTraining || training.active;
+    finish(isTraining ? "体力耗尽，训练提前结束。" : "体力耗尽，夜班提前结束。");
   }
 }
 
@@ -3859,14 +3863,22 @@ function finish(reason) {
   const currentTick = Math.floor(state.minute / 5);
   const remaining = state.customers.waiting.length;
   if (remaining > 0) {
-    addLog(`🌙 打烊时间到！店内还有 ${remaining} 位顾客未买到商品，全部计入缺货。`);
+    if (isTraining) {
+      addLog(`⏱️ 训练结束！店内还有 ${remaining} 位顾客未买到商品，全部计入缺货。`);
+    } else {
+      addLog(`🌙 打烊时间到！店内还有 ${remaining} 位顾客未买到商品，全部计入缺货。`);
+    }
     state.customers.waiting.forEach(customer => {
       state.misses += 1;
       state.customers.missedCount += 1;
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       recordActualCustomer(customer.goodKey, currentTick, false);
       const good = goods[customer.goodKey];
-      addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
+      if (isTraining) {
+        addLog(`🚪 顾客#${customer.id}因训练结束离开，没买到${good.icon}${good.name}。`);
+      } else {
+        addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
+      }
     });
     state.customers.waiting = [];
   }
@@ -5063,10 +5075,21 @@ function bindTrainingControls() {
   });
 }
 
-function getTrainingConfigOverride(key) {
-  if (!training.active || !training.themeId) return null;
+function getTrainingConfigOverride(key, defaultValue) {
+  if (!training.active || !training.themeId) return defaultValue;
   const theme = TRAINING_THEMES[training.themeId];
-  return theme?.config?.[key] ?? null;
+  if (!theme || !theme.config) return defaultValue;
+  if (theme.config[key] !== undefined && theme.config[key] !== null) {
+    return theme.config[key];
+  }
+  const multiplierKey = key + 'Multiplier';
+  if (theme.config[multiplierKey] !== undefined && theme.config[multiplierKey] !== null && defaultValue !== undefined) {
+    if (Number.isInteger(defaultValue)) {
+      return Math.max(1, Math.round(defaultValue * theme.config[multiplierKey]));
+    }
+    return defaultValue * theme.config[multiplierKey];
+  }
+  return defaultValue;
 }
 
 init();
