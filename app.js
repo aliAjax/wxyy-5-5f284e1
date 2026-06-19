@@ -2499,27 +2499,25 @@ function updateCodexStats() {
     const sessionSales = state.sessionSalesCount[key] || 0;
     const sessionMisses = state.sessionMissCount[key] || 0;
 
-    if (sessionSales > 0 || sessionMisses > 0) {
-      state.missCount[key] = (state.missCount[key] || 0) + sessionMisses;
+    state.missCount[key] = (state.missCount[key] || 0) + sessionMisses;
 
-      if (sessionSales > (state.maxSessionSales[key] || 0)) {
-        state.maxSessionSales[key] = sessionSales;
-      }
-
-      if (state.sessionShelfStats[key]) {
-        if (!state.shelfStats[key]) state.shelfStats[key] = {};
-        Object.entries(state.sessionShelfStats[key]).forEach(([shelfId, count]) => {
-          state.shelfStats[key][shelfId] = (state.shelfStats[key][shelfId] || 0) + count;
-        });
-      }
-
-      state.lastSession[key] = {
-        sales: sessionSales,
-        misses: sessionMisses,
-        date: today,
-        revenue: sessionSales * goods[key].price
-      };
+    if (sessionSales > (state.maxSessionSales[key] || 0)) {
+      state.maxSessionSales[key] = sessionSales;
     }
+
+    if (state.sessionShelfStats[key]) {
+      if (!state.shelfStats[key]) state.shelfStats[key] = {};
+      Object.entries(state.sessionShelfStats[key]).forEach(([shelfId, count]) => {
+        state.shelfStats[key][shelfId] = (state.shelfStats[key][shelfId] || 0) + count;
+      });
+    }
+
+    state.lastSession[key] = {
+      sales: sessionSales,
+      misses: sessionMisses,
+      date: today,
+      revenue: sessionSales * goods[key].price
+    };
   });
 
   localStorage.setItem("codexSalesCount", JSON.stringify(state.salesCount));
