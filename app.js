@@ -23,7 +23,15 @@ const levels = [
     customerWaitMax: 6,
     incomingPreview: 5,
     maxWaiting: 8,
-    tickInterval: 1200
+    tickInterval: 1200,
+    specialRule: {
+      id: "neighborPatience",
+      name: "邻里耐心",
+      icon: "🤝",
+      desc: "街坊常客脾气温和，顾客耐心额外+2格",
+      shortDesc: "顾客耐心+2",
+      color: "#7ec87e"
+    }
   },
   {
     id: 2,
@@ -51,7 +59,15 @@ const levels = [
     customerWaitMax: 5,
     incomingPreview: 6,
     maxWaiting: 10,
-    tickInterval: 1100
+    tickInterval: 1100,
+    specialRule: {
+      id: "dualEntrance",
+      name: "双入口客流",
+      icon: "🚪🚪",
+      desc: "社区超市有两个入口，每格可能同时涌入两组顾客",
+      shortDesc: "双入口·可能双倍客流",
+      color: "#d4a843"
+    }
   },
   {
     id: 3,
@@ -81,7 +97,15 @@ const levels = [
     customerWaitMax: 5,
     incomingPreview: 7,
     maxWaiting: 12,
-    tickInterval: 1000
+    tickInterval: 1000,
+    specialRule: {
+      id: "distanceFatigue",
+      name: "远距补货惩罚",
+      icon: "🏃‍♂️",
+      desc: "大卖场面积大，移动距离越远体力消耗越高（每超过3格距离+1体力）",
+      shortDesc: "远距移动体力+1",
+      color: "#d46a6a"
+    }
   }
 ];
 
@@ -95,6 +119,30 @@ function getCurrentLevelGoodKeys() {
   const levelGoodKeys = getCurrentLevel().goodKeys || [];
   const validGoodKeys = levelGoodKeys.filter((key) => goods[key]);
   return validGoodKeys.length > 0 ? validGoodKeys : Object.keys(goods);
+}
+
+function getLevelSpecialRule() {
+  return getCurrentLevel().specialRule || null;
+}
+
+function getSpecialRuleWaitBonus() {
+  const rule = getLevelSpecialRule();
+  if (rule && rule.id === "neighborPatience") return 2;
+  return 0;
+}
+
+function getSpecialRuleDualEntrance() {
+  const rule = getLevelSpecialRule();
+  if (rule && rule.id === "dualEntrance") return true;
+  return false;
+}
+
+function getSpecialRuleDistanceFatigue(fromX, fromY, toX, toY) {
+  const rule = getLevelSpecialRule();
+  if (!rule || rule.id !== "distanceFatigue") return 0;
+  const dist = Math.abs(toX - fromX) + Math.abs(toY - fromY);
+  if (dist > 3) return Math.floor((dist - 3));
+  return 0;
 }
 
 const boardEl = document.getElementById("board");
@@ -115,6 +163,7 @@ const waitingCountEl = document.getElementById("waitingCount");
 const pressureLevelEl = document.getElementById("pressureLevel");
 const waitingListEl = document.getElementById("waitingList");
 const incomingListEl = document.getElementById("incomingList");
+const ruleIndicatorEl = document.getElementById("ruleIndicator");
 
 const tutorialOverlay = document.getElementById("tutorialOverlay");
 const tutorialSpotlight = document.getElementById("tutorialSpotlight");
@@ -4299,7 +4348,8 @@ function generateNightReportFromReplay(replayData) {
     missed: missed,
     levelId: levelId,
     levelName: level.name,
-    levelIcon: level.icon
+    levelIcon: level.icon,
+    specialRule: level.specialRule || null
   };
 }
 
@@ -4349,6 +4399,16 @@ function generateNightReportFromState() {
     title: '夜班开始',
     desc: '卷帘门拉起，深夜便利店开始营业'
   });
+
+  const specialRuleForReport = getLevelSpecialRule();
+  if (specialRuleForReport) {
+    timelineEvents.push({
+      type: 'rule',
+      tick: 0,
+      title: `${specialRuleForReport.icon} ${specialRuleForReport.name}`,
+      desc: specialRuleForReport.desc
+    });
+  }
 
   if (state.goals && state.goals.length > 0) {
     state.goals.forEach(goal => {
@@ -4490,7 +4550,8 @@ function generateNightReportFromState() {
     missed: missed,
     levelId: currentLevelId,
     levelName: level.name,
-    levelIcon: level.icon
+    levelIcon: level.icon,
+    specialRule: specialRuleForReport
   };
 }
 
@@ -4531,7 +4592,8 @@ function getTimelineBadgeText(type) {
     pressure: '压力',
     goal: '目标',
     goal_set: '目标',
-    upgrade: '升级'
+    upgrade: '升级',
+    rule: '规则'
   };
   return map[type] || '';
 }
@@ -4628,7 +4690,7 @@ function openNightReport(reportData) {
   nightReportData.levelId = reportData.levelId;
   nightReportData.levelName = reportData.levelName;
 
-  nightReportSubtitle.textContent = `${reportData.levelIcon || '🏪'} 第 ${reportData.levelId} 关 · ${reportData.levelName}`;
+  nightReportSubtitle.textContent = `${reportData.levelIcon || '🏪'} 第 ${reportData.levelId} 关 · ${reportData.levelName}${reportData.specialRule ? ` · ${reportData.specialRule.icon} ${reportData.specialRule.name}` : ''}`;
   reportFinalScore.textContent = reportData.finalScore;
   reportServiceRate.textContent = reportData.serviceRate + '%';
   reportMisses.textContent = reportData.misses;
@@ -4709,6 +4771,20 @@ function renderLevelName() {
   if (levelNameEl) {
     levelNameEl.textContent = `${level.icon} ${level.name}`;
   }
+}
+
+function renderRuleIndicator() {
+  if (!ruleIndicatorEl) return;
+  const rule = getLevelSpecialRule();
+  if (!rule) {
+    ruleIndicatorEl.classList.add("hidden");
+    return;
+  }
+  ruleIndicatorEl.classList.remove("hidden");
+  ruleIndicatorEl.innerHTML = `${rule.icon} ${rule.shortDesc}`;
+  ruleIndicatorEl.style.borderColor = rule.color;
+  ruleIndicatorEl.style.color = rule.color;
+  ruleIndicatorEl.title = `${rule.name}：${rule.desc}`;
 }
 
 function renderClerkBadge() {
@@ -4946,6 +5022,7 @@ function openLevelSelect() {
         </div>
       </div>
       <p class="level-desc">${level.desc}</p>
+      ${level.specialRule ? `<div class="level-rule-badge" style="border-color:${level.specialRule.color};color:${level.specialRule.color};"><span class="level-rule-icon">${level.specialRule.icon}</span> ${level.specialRule.name}：${level.specialRule.desc}</div>` : ''}
       <div class="level-meta">
         <span>🕐 ${durationText}</span>
         <span>📦 ${level.shelves.length} 货架</span>
@@ -4973,6 +5050,7 @@ function openLevelSelect() {
       renderCrates();
       render();
       renderLevelName();
+      renderRuleIndicator();
       levelSelectOverlay.classList.add("hidden");
     });
     levelCardsEl.appendChild(card);
@@ -5012,6 +5090,7 @@ function init() {
   updateEditorCurrentSchemeDisplay();
   render();
   renderLevelName();
+  renderRuleIndicator();
   renderClerkBadge();
   tutorialTotalEl.textContent = tutorialSteps.length;
 
@@ -5351,6 +5430,10 @@ function startGame() {
     generateIncomingCustomer();
   }
   addLog("营业开始，顾客陆续进店。");
+  const rule = getLevelSpecialRule();
+  if (rule) {
+    addLog(`📋 特殊规则：${rule.icon} ${rule.name} — ${rule.desc}`);
+  }
   addLog("🎯 本次夜班目标已生成：");
   state.goals.forEach((g, i) => {
     addLog(`  ${i + 1}. ${g.title}（奖励 +${g.reward}分）`);
@@ -5414,6 +5497,7 @@ function resetGame() {
   updateEditorCurrentSchemeDisplay();
   renderCrates();
   renderLevelName();
+  renderRuleIndicator();
   renderClerkBadge();
   render();
   renderGoals();
@@ -5482,11 +5566,14 @@ function generateIncomingCustomer() {
     : effectiveCustomerRandomRange;
 
   const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * randomRange);
+  const baseMaxWait = effectiveCustomerWaitMin + Math.floor(Math.random() * (effectiveCustomerWaitMax - effectiveCustomerWaitMin + 1));
+  const ruleWaitBonus = getSpecialRuleWaitBonus();
   state.customers.incoming.push({
     id: state.customers.nextId++,
     goodKey: goodKey,
     arrivalTick: arrivalTick,
-    maxWait: effectiveCustomerWaitMin + Math.floor(Math.random() * (effectiveCustomerWaitMax - effectiveCustomerWaitMin + 1))
+    maxWait: baseMaxWait + ruleWaitBonus,
+    _ruleWaitBonus: ruleWaitBonus
   });
 }
 
@@ -5521,6 +5608,22 @@ function processCustomerQueue() {
     }
   });
   state.customers.incoming = state.customers.incoming.filter(c => c.arrivalTick > currentTick);
+
+  if (getSpecialRuleDualEntrance() && Math.random() < 0.35) {
+    const bonusGoodKeys = getCurrentLevelGoodKeys();
+    const bonusGoodKey = bonusGoodKeys[Math.floor(Math.random() * bonusGoodKeys.length)];
+    const bonusArrival = currentTick + 1;
+    const bonusMaxWait = level.customerWaitMin + Math.floor(Math.random() * (level.customerWaitMax - level.customerWaitMin + 1));
+    const bonusCustomer = {
+      id: state.customers.nextId++,
+      goodKey: bonusGoodKey,
+      arrivalTick: bonusArrival,
+      maxWait: bonusMaxWait,
+      _ruleWaitBonus: 0,
+      _dualEntrance: true
+    };
+    state.customers.incoming.push(bonusCustomer);
+  }
 
   const previewCount = level.incomingPreview + getIncomingPreviewBonus();
   while (state.customers.incoming.length < previewCount) {
@@ -5655,9 +5758,13 @@ function move(dx, dy) {
   const nextX = Math.max(0, Math.min(level.mapCols - 1, state.player.x + dx));
   const nextY = Math.max(0, Math.min(level.mapRows - 1, state.player.y + dy));
   if (nextX === state.player.x && nextY === state.player.y) return;
+  const prevX = state.player.x;
+  const prevY = state.player.y;
   state.player.x = nextX;
   state.player.y = nextY;
-  spendEnergy(hasAbility("moveSave") ? 0 : 1);
+  const baseMoveCost = hasAbility("moveSave") ? 0 : 1;
+  const distFatigue = getSpecialRuleDistanceFatigue(prevX, prevY, nextX, nextY);
+  spendEnergy(baseMoveCost + distFatigue);
   replayRecordFrame('move');
   render();
 }
@@ -5968,10 +6075,37 @@ function finish(reason) {
     return;
   }
 
+  const specialRule = getLevelSpecialRule();
+  let specialRuleHtml = '';
+  if (specialRule) {
+    let ruleEffectText = '';
+    if (specialRule.id === 'neighborPatience') {
+      const totalServedWithBonus = state.customers.servedCount;
+      ruleEffectText = `本关邻里耐心生效，顾客等待上限+2格。共服务 ${totalServedWithBonus} 位顾客，温和的邻里氛围为你争取了更多补货时间。`;
+    } else if (specialRule.id === 'dualEntrance') {
+      const dualEntranceCount = (state.customers.waiting.filter(c => c._dualEntrance).length) + (state.customers.servedCount > 0 ? Math.floor(state.customers.servedCount * 0.25) : 0);
+      ruleEffectText = `本关双入口客流生效，第二入口额外涌入约 ${Math.max(1, dualEntranceCount)} 位顾客。客流更大但也带来更多销售机会。`;
+    } else if (specialRule.id === 'distanceFatigue') {
+      ruleEffectText = `本关远距补货惩罚生效，移动距离超过3格时每多1格额外消耗1点体力。合理规划路线是节省体力的关键。`;
+    }
+    specialRuleHtml = `
+      <div class="result-goals">
+        <h3>${specialRule.icon} ${specialRule.name}</h3>
+        <div class="result-goal-list">
+          <div class="result-goal-item result-rule-item" style="background:${specialRule.color}15;border-left:3px solid ${specialRule.color};">
+            <span style="color:${specialRule.color};">${specialRule.desc}</span>
+            <span class="reward-tag" style="color:${specialRule.color};">${ruleEffectText}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   const resultHtml = `
     <h2>${reason}</h2>
     <p>最终销售额 ¥${state.sales}，缺货 ${state.misses} 次，剩余体力 ${state.energy}，基础评分 ${baseScore}。</p>
     ${statsHtml}
+    ${specialRuleHtml}
     ${schedulingComparisonHtml}
     ${goalsHtml}
     ${eventsHtml}
@@ -6928,6 +7062,7 @@ function exitTrainingSession(showResult = true) {
   state = freshState(false);
   renderCrates();
   renderLevelName();
+  renderRuleIndicator();
   renderClerkBadge();
   render();
   renderGoals();

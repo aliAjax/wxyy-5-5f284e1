@@ -1480,6 +1480,61 @@ h2 {
   border-top: 1px dashed #3f5246;
 }
 
+.level-rule-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border: 1px solid;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  line-height: 1.5;
+}
+
+.level-rule-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.rule-indicator {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.3);
+  white-space: nowrap;
+}
+
+.rule-indicator.hidden {
+  display: none;
+}
+
+.result-rule-item {
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.result-rule-item .reward-tag {
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.timeline-item.rule .timeline-dot {
+  background: #d4a843;
+  border-color: #d4a843;
+}
+
+.timeline-badge.rule {
+  background: rgba(212,168,67,0.15);
+  color: #d4a843;
+}
+
 .clerk-badge {
   display: flex;
   align-items: center;
