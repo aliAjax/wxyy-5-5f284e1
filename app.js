@@ -196,6 +196,7 @@ const responseEventIcon = document.getElementById("responseEventIcon");
 const responseEventName = document.getElementById("responseEventName");
 const responseEventDesc = document.getElementById("responseEventDesc");
 const responseOptions = document.getElementById("responseOptions");
+const predictionPanelEl = document.getElementById("predictionPanel");
 const appShellEl = document.querySelector(".app-shell");
 
 const saveAsSchemeBtn = document.getElementById("saveAsSchemeBtn");
@@ -624,6 +625,375 @@ const schedulingState = {
     totalMissed: 0
   }
 };
+
+const PREDICTION_LOOKAHEAD = 6;
+
+function computeForecast() {
+  const level = getCurrentLevel();
+  const goodKeys = getCurrentLevelGoodKeys();
+  const currentTick = Math.floor(state.minute / 5);
+  const totalTicks = Math.ceil(level.duration / 5);
+
+  const queuePressure = getPressureLevel();
+  const waitingCount = state.customers.waiting.length;
+  const incomingCount = state.customers.incoming.length;
+  const queueBacklogFactor = Math.min(1.3, 1 + waitingCount * 0.05);
+
+  const trendBars = [];
+  for (let i = 0; i < PREDICTION_LOOKAHEAD; i++) {
+    const targetTick = currentTick + i + 1;
+    if (targetTick >= totalTicks) {
+      trendBars.push({ intensity: 0, level: 'low', tickOffset: i + 1 });
+      continue;
+    }
+
+    let intensity;
+    const curveSeg = getCurveSegmentForTick(targetTick);
+    if (schedulingState.active && curveSeg) {
+      intensity = curveSeg.intensity;
+    } else {
+      const progress = targetTick / totalTicks;
+      intensity = 0.8 + progress * 0.4 + (Math.random() - 0.5) * 0.2;
+    }
+
+    if (i === 0) {
+      intensity *= queueBacklogFactor;
+    }
+
+    (state.events.active || []).forEach(evt => {
+      const template = eventTemplates[evt.templateId];
+      if (!template) return;
+      if (template.effect) {
+        if (template.effect.demandMultiplier) {
+          intensity *= 1.15;
+        }
+        if (template.effect.blockWarehouse) {
+          intensity *= 1.1;
+        }
+      }
+      const evtRemaining = evt.endTick - currentTick;
+      if (evtRemaining > 0 && evtRemaining <= PREDICTION_LOOKAHEAD && i >= evtRemaining) {
+        intensity *= 0.9;
+      }
+    });
+
+    if (state.events.warning) {
+      intensity *= 1.12;
+    }
+
+    if (state.warehouseBlocked) {
+      intensity *= 1.08;
+    }
+
+    intensity += (Math.random() - 0.5) * 0.12;
+    intensity = Math.max(0.3, Math.min(2.8, intensity));
+
+    let barLevel;
+    if (intensity < 0.7) barLevel = 'low';
+    else if (intensity < 1.0) barLevel = 'medium';
+    else if (intensity < 1.4) barLevel = 'high';
+    else barLevel = 'critical';
+
+    trendBars.push({ intensity, level: barLevel, tickOffset: i + 1 });
+  }
+
+  const avgIntensity = trendBars.reduce((s, b) => s + b.intensity, 0) / trendBars.length;
+  let overallPressureLevel;
+  if (avgIntensity < 0.7) overallPressureLevel = 'low';
+  else if (avgIntensity < 1.0) overallPressureLevel = 'medium';
+  else if (avgIntensity < 1.4) overallPressureLevel = 'high';
+  else overallPressureLevel = 'critical';
+
+  if (queuePressure.level >= 3) {
+    overallPressureLevel = overallPressureLevel === 'critical' ? 'critical' : 
+      overallPressureLevel === 'high' ? 'critical' : 'high';
+  }
+
+  const pressureLabels = { low: '宽松', medium: '适中', high: '紧张', critical: '危险' };
+  const baseMin = Math.max(0, Math.round(avgIntensity * 1.5 - 1));
+  const baseMax = Math.max(baseMin + 1, Math.round(avgIntensity * 2.5 + 1));
+  const queueBonus = Math.floor(waitingCount * 0.3);
+  const pressureRangeMin = Math.max(0, baseMin + queueBonus);
+  const pressureRangeMax = Math.max(pressureRangeMin + 1, baseMax + queueBonus);
+
+  const waitingByGood = {};
+  goodKeys.forEach(k => waitingByGood[k] = 0);
+  state.customers.waiting.forEach(c => {
+    if (waitingByGood[c.goodKey] !== undefined) {
+      waitingByGood[c.goodKey]++;
+    }
+  });
+
+  const incomingByGood = {};
+  goodKeys.forEach(k => incomingByGood[k] = 0);
+  state.customers.incoming.forEach(c => {
+    if (incomingByGood[c.goodKey] !== undefined && c.arrivalTick <= currentTick + PREDICTION_LOOKAHEAD) {
+      incomingByGood[c.goodKey]++;
+    }
+  });
+
+  const goodForecasts = goodKeys.map(key => {
+    const shelvesForGood = state.shelves.filter(s => s.good === key);
+    const totalStock = shelvesForGood.reduce((sum, s) => sum + (isShelfBlocked(s) ? 0 : s.stock), 0);
+    const totalMax = shelvesForGood.reduce((sum, s) => sum + s.max, 0);
+    const blockedShelves = shelvesForGood.filter(s => isShelfBlocked(s)).length;
+    const partialShelves = shelvesForGood.filter(s => isShelfPartialAccess(s)).length;
+
+    let expectedDemand = 0;
+    for (let i = 0; i < PREDICTION_LOOKAHEAD; i++) {
+      const targetTick = currentTick + i + 1;
+      if (targetTick >= totalTicks) break;
+      const curveSeg = getCurveSegmentForTick(targetTick);
+      let weight = 1;
+      if (schedulingState.active && curveSeg && curveSeg.goodWeights[key]) {
+        weight = curveSeg.goodWeights[key];
+      }
+      let segIntensity = 1;
+      if (schedulingState.active && curveSeg) {
+        segIntensity = curveSeg.intensity;
+      }
+      expectedDemand += segIntensity * weight * 0.8;
+    }
+
+    expectedDemand += waitingByGood[key] * 0.6;
+    expectedDemand += incomingByGood[key] * 0.4;
+
+    (state.events.active || []).forEach(evt => {
+      const template = eventTemplates[evt.templateId];
+      if (template && template.effect) {
+        if (template.effect.demandMultiplier && template.effect.goodKey === key) {
+          expectedDemand *= template.effect.demandMultiplier * 0.7;
+        }
+        if (template.effect.blockShelf && template.effect.targetGood === key) {
+          expectedDemand *= partialShelves > 0 ? 0.5 : 0.1;
+        }
+        if (template.effect.blockWarehouse) {
+          expectedDemand *= 1.15;
+        }
+      }
+    });
+
+    if (state.events.warning) {
+      const warnTemplate = eventTemplates[state.events.warning.templateId];
+      if (warnTemplate && warnTemplate.effect) {
+        if (warnTemplate.effect.demandMultiplier && warnTemplate.effect.goodKey === key) {
+          expectedDemand *= 1.35;
+        }
+        if (warnTemplate.effect.blockShelf && warnTemplate.effect.targetGood === key) {
+          expectedDemand *= 1.2;
+        }
+      }
+    }
+
+    if (state.warehouseBlocked) {
+      expectedDemand *= 1.1;
+    }
+
+    let demandFuzzyMin = Math.max(0, Math.round(expectedDemand * 0.65));
+    let demandFuzzyMax = Math.max(demandFuzzyMin + 1, Math.round(expectedDemand * 1.45));
+
+    let riskLevel;
+    let riskLabel;
+    const stockRatio = totalMax > 0 ? totalStock / totalMax : 0;
+    const urgentWaiting = state.customers.waiting.filter(c => 
+      c.goodKey === key && (c.maxWait - c.waited) <= 1
+    ).length;
+
+    if (totalStock === 0 || blockedShelves === shelvesForGood.length) {
+      riskLevel = 'critical';
+      riskLabel = '断货';
+    } else if (urgentWaiting > 0 && totalStock < urgentWaiting) {
+      riskLevel = 'critical';
+      riskLabel = '极高';
+    } else if (stockRatio < 0.2 && expectedDemand > totalStock * 1.5) {
+      riskLevel = 'critical';
+      riskLabel = '极高';
+    } else if (stockRatio < 0.35 || (expectedDemand > totalStock && totalStock < 4)) {
+      riskLevel = 'high';
+      riskLabel = '偏高';
+    } else if (stockRatio < 0.55 || expectedDemand > totalStock * 0.7) {
+      riskLevel = 'medium';
+      riskLabel = '中等';
+    } else {
+      riskLevel = 'low';
+      riskLabel = '充足';
+    }
+
+    const lowStockThreshold = hasAbility("earlyAlert") ? 0.5 : 0.35;
+    const bonusThreshold = lowStockThreshold + getLowStockThresholdBonus() / 100;
+    if (stockRatio < bonusThreshold && riskLevel === 'low') {
+      riskLevel = 'medium';
+      riskLabel = '中等';
+    }
+
+    const prevDemand = schedulingState.active && schedulingState.generatedCurve
+      ? (() => {
+          const prevSeg = getCurveSegmentForTick(Math.max(0, currentTick - 2));
+          return prevSeg ? (prevSeg.goodWeights[key] || 1) * prevSeg.intensity : 1;
+        })()
+      : 1;
+    const currDemand = expectedDemand / PREDICTION_LOOKAHEAD;
+    const demandRatio = prevDemand > 0 ? currDemand / prevDemand : 1;
+
+    const recentServed = state.sessionSalesCount[key] || 0;
+    const recentMissed = state.sessionMissCount[key] || 0;
+    if (recentMissed > recentServed * 0.3 && recentMissed >= 2) {
+      riskLevel = riskLevel === 'critical' ? 'critical' : 
+        riskLevel === 'high' ? 'critical' : 'high';
+    }
+
+    let trend;
+    if (demandRatio > 1.25) trend = 'up';
+    else if (demandRatio < 0.75) trend = 'down';
+    else trend = 'stable';
+
+    const demandBarPercent = Math.min(100, Math.round((expectedDemand / Math.max(totalMax, 1)) * 100));
+
+    return {
+      key,
+      totalStock,
+      totalMax,
+      expectedDemand,
+      demandFuzzyMin,
+      demandFuzzyMax,
+      riskLevel,
+      riskLabel,
+      trend,
+      demandBarPercent,
+      blockedShelves,
+      partialShelves,
+      waitingCount: waitingByGood[key],
+      incomingCount: incomingByGood[key]
+    };
+  });
+
+  const eventHints = [];
+  (state.events.active || []).forEach(evt => {
+    const template = eventTemplates[evt.templateId];
+    if (template) {
+      const remaining = Math.max(0, evt.endTick - currentTick);
+      eventHints.push({
+        icon: template.icon,
+        text: `${template.name} (还剩约${remaining}格)`,
+        type: evt.type
+      });
+    }
+  });
+
+  if (state.events.warning) {
+    const warnTemplate = eventTemplates[state.events.warning.templateId];
+    if (warnTemplate) {
+      eventHints.push({
+        icon: warnTemplate.warningIcon || '⚠️',
+        text: `${warnTemplate.warningTitle || '预警中'} (${state.events.warning.remainingTicks}格后触发)`,
+        type: 'warning'
+      });
+    }
+  }
+
+  if (state.warehouseBlocked) {
+    eventHints.push({
+      icon: '📦',
+      text: '仓库暂时缺货，补货受限',
+      type: 'warehouse'
+    });
+  }
+
+  return {
+    trendBars,
+    overallPressureLevel,
+    pressureLabel: pressureLabels[overallPressureLevel],
+    pressureRangeMin,
+    pressureRangeMax,
+    goodForecasts,
+    eventHints
+  };
+}
+
+function renderPredictionPanel() {
+  if (!predictionPanelEl) return;
+  if (!state.running) {
+    predictionPanelEl.innerHTML = `
+      <div class="prediction-empty">
+        <div class="prediction-empty-icon">🔮</div>
+        <div class="prediction-empty-text">营业开始后显示趋势预测</div>
+        <div class="prediction-empty-hint">选择客流策略并开始营业</div>
+      </div>
+    `;
+    return;
+  }
+
+  const forecast = computeForecast();
+
+  const trendHtml = `
+    <div class="prediction-section">
+      <div class="prediction-section-title">📈 客流压力趋势</div>
+      <div class="prediction-trend-chart">
+        ${forecast.trendBars.map((bar, idx) => {
+          const heightPct = Math.min(100, Math.max(10, bar.intensity * 50));
+          return `<div class="prediction-trend-bar level-${bar.level}" style="height:${heightPct}%" title="第${idx + 1}格预测"></div>`;
+        }).join('')}
+      </div>
+      <div class="prediction-trend-labels">
+        <span>下1格</span>
+        <span>${PREDICTION_LOOKAHEAD}格后</span>
+      </div>
+      <div class="prediction-pressure-row" style="margin-top:8px;">
+        <span class="prediction-pressure-label">预期压力</span>
+        <span class="prediction-pressure-badge risk-${forecast.overallPressureLevel}">${forecast.pressureLabel}</span>
+      </div>
+      <div class="prediction-fuzzy">预估进店 ${forecast.pressureRangeMin}~${forecast.pressureRangeMax} 人</div>
+    </div>
+  `;
+
+  const dividerHtml = '<div class="prediction-section-divider"></div>';
+
+  const goodsHtml = `
+    <div class="prediction-section">
+      <div class="prediction-section-title">🏷️ 热门商品 & 库存风险</div>
+      <div class="prediction-goods-list">
+        ${forecast.goodForecasts.map(g => {
+          const good = goods[g.key];
+          const trendIcon = g.trend === 'up' ? '↑' : g.trend === 'down' ? '↓' : '→';
+          const trendLabel = g.trend === 'up' ? '升温' : g.trend === 'down' ? '降温' : '稳定';
+          const blockedText = g.blockedShelves > 0 ? ` ⚠️${g.blockedShelves}架故障` : '';
+          const partialText = g.partialShelves > 0 && g.blockedShelves === 0 ? ` 🔧${g.partialShelves}架受限` : '';
+          const queueText = g.waitingCount > 0 ? ` 👥${g.waitingCount}人等待` : '';
+          const barWidth = Math.min(100, g.demandBarPercent);
+          return `
+            <div class="prediction-good-row">
+              <div class="prediction-good-icon">${good.icon}</div>
+              <div class="prediction-good-info">
+                <div class="prediction-good-name">
+                  ${good.name}${blockedText}${partialText}${queueText}
+                  <span class="prediction-good-trend ${g.trend}">${trendIcon}${trendLabel}</span>
+                </div>
+                <div class="prediction-good-bar"><span class="risk-${g.riskLevel}" style="width:${barWidth}%"></span></div>
+                <div class="prediction-fuzzy">库存${g.totalStock}/${g.totalMax} · 需求约${g.demandFuzzyMin}~${g.demandFuzzyMax}份</div>
+              </div>
+              <span class="prediction-risk-badge risk-${g.riskLevel}">${g.riskLabel}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  const eventHintsHtml = forecast.eventHints.length > 0 ? `
+    ${dividerHtml}
+    <div class="prediction-section">
+      <div class="prediction-section-title">⚡ 事件影响</div>
+      ${forecast.eventHints.map(h => `
+        <div class="prediction-event-hint">
+          <span class="hint-icon">${h.icon}</span>
+          <span>${h.text}</span>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  predictionPanelEl.innerHTML = trendHtml + dividerHtml + goodsHtml + eventHintsHtml;
+}
 
 const EVENT_TRIGGER_CONFIG = {
   minStartTick: 2,
@@ -4934,6 +5304,7 @@ function render() {
   renderClerkBadge();
   renderCrates();
   renderActiveEvents();
+  renderPredictionPanel();
 
   if (tutorial.active && tutorial.waitingForAction) {
     setTimeout(() => {
