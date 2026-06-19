@@ -91,6 +91,14 @@
             <button id="saveLayoutBtn" class="primary" type="button">💾 保存布局</button>
             <button id="cancelEditBtn" class="secondary" type="button">↩️ 取消编辑</button>
           </div>
+          <div class="editor-scheme-bar">
+            <button id="saveAsSchemeBtn" class="secondary scheme-btn" type="button">📁 保存为方案</button>
+            <button id="manageSchemesBtn" class="secondary scheme-btn" type="button">🗂️ 管理方案</button>
+          </div>
+          <div id="editorCurrentScheme" class="editor-current-scheme">
+            <span class="scheme-label">当前方案：</span>
+            <span id="currentSchemeName" class="scheme-name">默认布局</span>
+          </div>
           <div id="editorLog" class="editor-log"></div>
         </div>
         <h2>🎯 夜班目标</h2>
@@ -207,6 +215,94 @@
         <button id="schedulingSkipBtn" class="secondary" type="button" style="margin:0;flex:1;">🎲 跳过，随机模式</button>
         <button id="schedulingBackBtn" class="secondary hidden" type="button" style="margin:0;flex:1;">← 重新选择</button>
         <button id="schedulingStartBtn" class="primary hidden" type="button" style="margin:0;flex:2;">🚀 接受挑战，开始营业</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schemeOverlay" class="scheme-overlay hidden">
+    <div class="scheme-dialog">
+      <div class="scheme-header">
+        <h2 id="schemeDialogTitle">🗂️ 布局方案管理</h2>
+        <button id="schemeCloseBtn" class="scheme-close" type="button">✕</button>
+      </div>
+      <div id="schemeDialogLevel" class="scheme-dialog-level"></div>
+      <div id="schemeList" class="scheme-list"></div>
+      <div id="schemeEmptyHint" class="scheme-empty hidden">
+        <p>当前关卡还没有保存任何布局方案。</p>
+        <p>进入编辑器调整布局后，点击「保存为方案」即可创建方案。</p>
+      </div>
+      <div class="scheme-actions">
+        <button id="schemeNewBtn" class="primary" type="button">+ 新建方案（使用当前布局）</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schemeSaveOverlay" class="scheme-overlay hidden">
+    <div class="scheme-dialog scheme-dialog-small">
+      <div class="scheme-header">
+        <h2>📁 保存为方案</h2>
+        <button id="schemeSaveCloseBtn" class="scheme-close" type="button">✕</button>
+      </div>
+      <div class="scheme-save-body">
+        <label class="scheme-save-label">方案名称</label>
+        <input type="text" id="schemeNameInput" class="scheme-name-input" placeholder="请输入方案名称，例如：高峰备战方案" maxlength="20">
+        <label class="scheme-save-label">备注（可选）</label>
+        <textarea id="schemeDescInput" class="scheme-desc-input" placeholder="简要描述该方案的特点..." maxlength="100"></textarea>
+        <div id="schemeSavePreview" class="scheme-save-preview"></div>
+      </div>
+      <div class="scheme-actions">
+        <button id="schemeSaveCancelBtn" class="secondary" type="button" style="margin:0;flex:1;">取消</button>
+        <button id="schemeSaveConfirmBtn" class="primary" type="button" style="margin:0;flex:1;">💾 确认保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schemeRenameOverlay" class="scheme-overlay hidden">
+    <div class="scheme-dialog scheme-dialog-small">
+      <div class="scheme-header">
+        <h2>✏️ 重命名方案</h2>
+        <button id="schemeRenameCloseBtn" class="scheme-close" type="button">✕</button>
+      </div>
+      <div class="scheme-save-body">
+        <label class="scheme-save-label">新的方案名称</label>
+        <input type="text" id="schemeRenameInput" class="scheme-name-input" placeholder="请输入新的方案名称" maxlength="20">
+      </div>
+      <div class="scheme-actions">
+        <button id="schemeRenameCancelBtn" class="secondary" type="button" style="margin:0;flex:1;">取消</button>
+        <button id="schemeRenameConfirmBtn" class="primary" type="button" style="margin:0;flex:1;">✅ 确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schemeDeleteOverlay" class="scheme-overlay hidden">
+    <div class="scheme-dialog scheme-dialog-small">
+      <div class="scheme-header">
+        <h2>⚠️ 删除方案</h2>
+        <button id="schemeDeleteCloseBtn" class="scheme-close" type="button">✕</button>
+      </div>
+      <div class="scheme-delete-body">
+        <p id="schemeDeleteMsg" class="scheme-delete-msg">确定要删除这个方案吗？此操作不可撤销。</p>
+      </div>
+      <div class="scheme-actions">
+        <button id="schemeDeleteCancelBtn" class="secondary" type="button" style="margin:0;flex:1;">取消</button>
+        <button id="schemeDeleteConfirmBtn" class="scheme-delete-danger" type="button" style="margin:0;flex:1;">🗑️ 确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schemeApplyOverlay" class="scheme-overlay hidden">
+    <div class="scheme-dialog scheme-dialog-small">
+      <div class="scheme-header">
+        <h2>🔄 应用方案</h2>
+        <button id="schemeApplyCloseBtn" class="scheme-close" type="button">✕</button>
+      </div>
+      <div class="scheme-apply-body">
+        <p id="schemeApplyMsg" class="scheme-apply-msg">确定要加载此方案的布局吗？当前的编辑将被覆盖。</p>
+        <div id="schemeApplyPreview" class="scheme-apply-preview"></div>
+      </div>
+      <div class="scheme-actions">
+        <button id="schemeApplyCancelBtn" class="secondary" type="button" style="margin:0;flex:1;">取消</button>
+        <button id="schemeApplyConfirmBtn" class="primary" type="button" style="margin:0;flex:1;">✅ 应用方案</button>
       </div>
     </div>
   </div>

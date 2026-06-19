@@ -188,6 +188,46 @@ const eventBannerDesc = document.getElementById("eventBannerDesc");
 const activeEventsEl = document.getElementById("activeEvents");
 const appShellEl = document.querySelector(".app-shell");
 
+const saveAsSchemeBtn = document.getElementById("saveAsSchemeBtn");
+const manageSchemesBtn = document.getElementById("manageSchemesBtn");
+const editorCurrentScheme = document.getElementById("editorCurrentScheme");
+const currentSchemeNameEl = document.getElementById("currentSchemeName");
+
+const schemeOverlay = document.getElementById("schemeOverlay");
+const schemeCloseBtn = document.getElementById("schemeCloseBtn");
+const schemeDialogTitle = document.getElementById("schemeDialogTitle");
+const schemeDialogLevel = document.getElementById("schemeDialogLevel");
+const schemeListEl = document.getElementById("schemeList");
+const schemeEmptyHint = document.getElementById("schemeEmptyHint");
+const schemeNewBtn = document.getElementById("schemeNewBtn");
+
+const schemeSaveOverlay = document.getElementById("schemeSaveOverlay");
+const schemeSaveCloseBtn = document.getElementById("schemeSaveCloseBtn");
+const schemeNameInput = document.getElementById("schemeNameInput");
+const schemeDescInput = document.getElementById("schemeDescInput");
+const schemeSavePreview = document.getElementById("schemeSavePreview");
+const schemeSaveCancelBtn = document.getElementById("schemeSaveCancelBtn");
+const schemeSaveConfirmBtn = document.getElementById("schemeSaveConfirmBtn");
+
+const schemeRenameOverlay = document.getElementById("schemeRenameOverlay");
+const schemeRenameCloseBtn = document.getElementById("schemeRenameCloseBtn");
+const schemeRenameInput = document.getElementById("schemeRenameInput");
+const schemeRenameCancelBtn = document.getElementById("schemeRenameCancelBtn");
+const schemeRenameConfirmBtn = document.getElementById("schemeRenameConfirmBtn");
+
+const schemeDeleteOverlay = document.getElementById("schemeDeleteOverlay");
+const schemeDeleteCloseBtn = document.getElementById("schemeDeleteCloseBtn");
+const schemeDeleteMsg = document.getElementById("schemeDeleteMsg");
+const schemeDeleteCancelBtn = document.getElementById("schemeDeleteCancelBtn");
+const schemeDeleteConfirmBtn = document.getElementById("schemeDeleteConfirmBtn");
+
+const schemeApplyOverlay = document.getElementById("schemeApplyOverlay");
+const schemeApplyCloseBtn = document.getElementById("schemeApplyCloseBtn");
+const schemeApplyMsg = document.getElementById("schemeApplyMsg");
+const schemeApplyPreview = document.getElementById("schemeApplyPreview");
+const schemeApplyCancelBtn = document.getElementById("schemeApplyCancelBtn");
+const schemeApplyConfirmBtn = document.getElementById("schemeApplyConfirmBtn");
+
 const codexState = {
   selectedGood: null
 };
@@ -954,6 +994,579 @@ const editor = {
   logs: []
 };
 
+const schemeState = {
+  activeSchemeId: null,
+  tempSchemeId: null,
+  tempSchemeData: null,
+  lastSavedSchemeId: null
+};
+
+const SCHEME_STORAGE_KEY = "wxyy_layout_schemes";
+
+function loadAllSchemes() {
+  try {
+    const raw = localStorage.getItem(SCHEME_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed;
+  } catch (e) {
+    console.warn("读取布局方案失败", e);
+    return {};
+  }
+}
+
+function saveAllSchemes(allSchemes) {
+  try {
+    localStorage.setItem(SCHEME_STORAGE_KEY, JSON.stringify(allSchemes));
+    return true;
+  } catch (e) {
+    console.warn("保存布局方案失败", e);
+    return false;
+  }
+}
+
+function getSchemesForLevel(levelId) {
+  const all = loadAllSchemes();
+  const levelKey = `level_${levelId}`;
+  const schemes = all[levelKey];
+  if (!Array.isArray(schemes)) return [];
+  return schemes;
+}
+
+function setSchemesForLevel(levelId, schemes) {
+  const all = loadAllSchemes();
+  const levelKey = `level_${levelId}`;
+  all[levelKey] = schemes;
+  return saveAllSchemes(all);
+}
+
+function generateSchemeId() {
+  return `scheme_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function serializeShelves(shelves) {
+  return shelves.map(s => ({
+    id: s.id,
+    x: s.x,
+    y: s.y,
+    good: s.good,
+    max: s.max
+  }));
+}
+
+function validateShelves(shelves, level) {
+  if (!Array.isArray(shelves)) return false;
+  if (shelves.length === 0) return false;
+  for (const s of shelves) {
+    if (typeof s.id !== "string") return false;
+    if (typeof s.x !== "number" || typeof s.y !== "number") return false;
+    if (typeof s.good !== "string") return false;
+    if (!goods[s.good]) return false;
+    if (s.x < 0 || s.x >= level.mapCols) return false;
+    if (s.y < 0 || s.y >= level.mapRows) return false;
+  }
+  return true;
+}
+
+function formatSchemeDate(timestamp) {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function buildShelfPreviewHtml(shelves) {
+  if (!shelves || shelves.length === 0) return "";
+  return shelves.map(s => {
+    const g = goods[s.good] || { icon: "❓", name: "未知" };
+    return `<span>${s.id} ${g.icon}${g.name}(${s.x},${s.y})</span>`;
+  }).join("");
+}
+
+function getActiveSchemeName() {
+  if (!schemeState.activeSchemeId) return "默认布局";
+  const schemes = getSchemesForLevel(currentLevelId);
+  const scheme = schemes.find(s => s.id === schemeState.activeSchemeId);
+  return scheme ? scheme.name : "默认布局";
+}
+
+function updateEditorCurrentSchemeDisplay() {
+  if (!currentSchemeNameEl) return;
+  currentSchemeNameEl.textContent = getActiveSchemeName();
+}
+
+function openSaveSchemeDialog() {
+  if (!state || !state.shelves) return;
+  schemeNameInput.value = "";
+  schemeDescInput.value = "";
+  const level = getCurrentLevel();
+  const previewHtml = buildShelfPreviewHtml(state.shelves);
+  schemeSavePreview.innerHTML = `
+    <p class="scheme-save-preview-title">当前布局预览（${level.mapCols}×${level.mapRows}，共 ${state.shelves.length} 个货架）</p>
+    <div class="scheme-save-preview-items">${previewHtml}</div>
+  `;
+  schemeSaveOverlay.classList.remove("hidden");
+  setTimeout(() => schemeNameInput.focus(), 100);
+}
+
+function closeSaveSchemeDialog() {
+  schemeSaveOverlay.classList.add("hidden");
+  schemeNameInput.value = "";
+  schemeDescInput.value = "";
+}
+
+function confirmSaveScheme() {
+  const name = schemeNameInput.value.trim();
+  const desc = schemeDescInput.value.trim();
+  if (!name) {
+    addEditorLog("请输入方案名称！", "error");
+    schemeNameInput.focus();
+    return;
+  }
+  if (name.length > 20) {
+    addEditorLog("方案名称不能超过 20 个字符！", "error");
+    schemeNameInput.focus();
+    return;
+  }
+  const level = getCurrentLevel();
+  const shelvesData = serializeShelves(state.shelves);
+  if (!validateShelves(shelvesData, level)) {
+    addEditorLog("布局数据不合法，无法保存！", "error");
+    return;
+  }
+  const schemes = getSchemesForLevel(currentLevelId);
+  const existing = schemes.find(s => s.name === name);
+  if (existing) {
+    const overwriteOk = confirm(`已存在名为「${name}」的方案，是否覆盖？`);
+    if (!overwriteOk) {
+      schemeNameInput.focus();
+      return;
+    }
+    existing.shelves = shelvesData;
+    existing.desc = desc;
+    existing.updatedAt = Date.now();
+    existing.shelfCount = shelvesData.length;
+    existing.mapSize = `${level.mapCols}×${level.mapRows}`;
+    schemeState.activeSchemeId = existing.id;
+    schemeState.lastSavedSchemeId = existing.id;
+  } else {
+    const newScheme = {
+      id: generateSchemeId(),
+      name: name,
+      desc: desc,
+      shelves: shelvesData,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      shelfCount: shelvesData.length,
+      mapSize: `${level.mapCols}×${level.mapRows}`
+    };
+    schemes.push(newScheme);
+    schemeState.activeSchemeId = newScheme.id;
+    schemeState.lastSavedSchemeId = newScheme.id;
+  }
+  const ok = setSchemesForLevel(currentLevelId, schemes);
+  if (ok) {
+    addEditorLog(`✅ 方案「${name}」保存成功！`, "success");
+    addLog(`📁 布局方案「${name}」已保存`);
+    updateEditorCurrentSchemeDisplay();
+    closeSaveSchemeDialog();
+    if (!schemeOverlay.classList.contains("hidden")) {
+      renderSchemeList();
+    }
+  } else {
+    addEditorLog("保存失败，可能是浏览器存储空间不足。", "error");
+  }
+}
+
+function openSchemeManager() {
+  const level = getCurrentLevel();
+  schemeDialogLevel.textContent = `当前关卡：${level.icon} ${level.name}（${level.mapCols}×${level.mapRows}）`;
+  renderSchemeList();
+  schemeOverlay.classList.remove("hidden");
+}
+
+function closeSchemeManager() {
+  schemeOverlay.classList.add("hidden");
+}
+
+function renderSchemeList() {
+  const schemes = getSchemesForLevel(currentLevelId);
+  if (schemes.length === 0) {
+    schemeListEl.innerHTML = "";
+    schemeListEl.classList.add("hidden");
+    schemeEmptyHint.classList.remove("hidden");
+    return;
+  }
+  schemeListEl.classList.remove("hidden");
+  schemeEmptyHint.classList.add("hidden");
+  schemeListEl.innerHTML = "";
+  const sortedSchemes = [...schemes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  sortedSchemes.forEach(scheme => {
+    const isCurrent = scheme.id === schemeState.activeSchemeId;
+    const card = document.createElement("div");
+    card.className = `scheme-card ${isCurrent ? "current" : ""}`;
+    const previewHtml = buildShelfPreviewHtml(scheme.shelves);
+    const createdAt = formatSchemeDate(scheme.createdAt);
+    const updatedAt = formatSchemeDate(scheme.updatedAt);
+    const timeText = scheme.updatedAt && scheme.updatedAt !== scheme.createdAt
+      ? `更新于 ${updatedAt}`
+      : `创建于 ${createdAt}`;
+    card.innerHTML = `
+      <div class="scheme-card-header">
+        <div class="scheme-card-title">
+          <div class="scheme-card-icon">📐</div>
+          <div class="scheme-card-info">
+            <div class="scheme-card-name">
+              ${escapeHtml(scheme.name)}
+              ${isCurrent ? '<span class="current-badge">当前方案</span>' : ""}
+            </div>
+            <div class="scheme-card-meta">
+              ${scheme.mapSize || ""} · ${scheme.shelfCount || 0} 个货架 · ${timeText}
+            </div>
+          </div>
+        </div>
+      </div>
+      ${scheme.desc ? `<div class="scheme-card-desc">${escapeHtml(scheme.desc)}</div>` : ""}
+      <div class="scheme-card-preview">
+        ${previewHtml}
+      </div>
+      <div class="scheme-card-actions">
+        <button class="scheme-card-btn apply ${isCurrent ? "current-active" : ""}" data-action="apply" data-id="${scheme.id}" type="button">
+          ${isCurrent ? "✓ 已应用" : "🔄 应用方案"}
+        </button>
+        <button class="scheme-card-btn rename" data-action="rename" data-id="${scheme.id}" type="button">✏️ 重命名</button>
+        <button class="scheme-card-btn delete" data-action="delete" data-id="${scheme.id}" type="button">🗑️ 删除</button>
+      </div>
+    `;
+    schemeListEl.appendChild(card);
+  });
+  schemeListEl.querySelectorAll(".scheme-card-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const action = e.currentTarget.dataset.action;
+      const id = e.currentTarget.dataset.id;
+      handleSchemeCardAction(action, id);
+    });
+  });
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function handleSchemeCardAction(action, schemeId) {
+  if (!schemeId) return;
+  const schemes = getSchemesForLevel(currentLevelId);
+  const scheme = schemes.find(s => s.id === schemeId);
+  if (!scheme) {
+    addEditorLog("方案不存在，可能已被删除。", "error");
+    renderSchemeList();
+    return;
+  }
+  switch (action) {
+    case "apply":
+      openApplySchemeDialog(scheme);
+      break;
+    case "rename":
+      openRenameSchemeDialog(scheme);
+      break;
+    case "delete":
+      openDeleteSchemeDialog(scheme);
+      break;
+  }
+}
+
+function openApplySchemeDialog(scheme) {
+  const isCurrent = scheme.id === schemeState.activeSchemeId;
+  schemeState.tempSchemeId = scheme.id;
+  schemeState.tempSchemeData = scheme;
+  const previewHtml = buildShelfPreviewHtml(scheme.shelves);
+  schemeApplyMsg.textContent = isCurrent
+    ? `当前已经在使用「${scheme.name}」。重新应用将放弃当前编辑，恢复到保存时的状态。`
+    : `确定要加载方案「${scheme.name}」吗？${editor.active ? "当前的编辑将被覆盖。" : ""}`;
+  schemeApplyPreview.innerHTML = `
+    <p class="scheme-apply-preview-title">方案内容预览</p>
+    <div class="scheme-apply-preview-items">${previewHtml}</div>
+  `;
+  schemeApplyOverlay.classList.remove("hidden");
+}
+
+function closeApplySchemeDialog() {
+  schemeApplyOverlay.classList.add("hidden");
+  schemeState.tempSchemeId = null;
+  schemeState.tempSchemeData = null;
+}
+
+function confirmApplyScheme() {
+  const scheme = schemeState.tempSchemeData;
+  if (!scheme) {
+    closeApplySchemeDialog();
+    return;
+  }
+  const level = getCurrentLevel();
+  if (!validateShelves(scheme.shelves, level)) {
+    addEditorLog(`方案「${scheme.name}」数据不合法，无法应用！`, "error");
+    closeApplySchemeDialog();
+    return;
+  }
+  const newShelves = scheme.shelves.map(s => ({
+    id: s.id,
+    x: s.x,
+    y: s.y,
+    good: s.good,
+    stock: 0,
+    max: s.max,
+    _broken: false
+  }));
+  state.shelves = newShelves;
+  schemeState.activeSchemeId = scheme.id;
+  editor.selectedShelfId = null;
+  editor.originalShelves = state.shelves.map(s => ({ ...s }));
+  addEditorLog(`✅ 已应用方案「${scheme.name}」`, "success");
+  addLog(`📐 已应用布局方案「${scheme.name}」`);
+  updateEditorCurrentSchemeDisplay();
+  updateEditorUI();
+  render();
+  closeApplySchemeDialog();
+  if (!schemeOverlay.classList.contains("hidden")) {
+    renderSchemeList();
+  }
+}
+
+function openRenameSchemeDialog(scheme) {
+  schemeState.tempSchemeId = scheme.id;
+  schemeState.tempSchemeData = scheme;
+  schemeRenameInput.value = scheme.name;
+  schemeRenameOverlay.classList.remove("hidden");
+  setTimeout(() => {
+    schemeRenameInput.focus();
+    schemeRenameInput.select();
+  }, 100);
+}
+
+function closeRenameSchemeDialog() {
+  schemeRenameOverlay.classList.add("hidden");
+  schemeRenameInput.value = "";
+  schemeState.tempSchemeId = null;
+  schemeState.tempSchemeData = null;
+}
+
+function confirmRenameScheme() {
+  const newName = schemeRenameInput.value.trim();
+  const scheme = schemeState.tempSchemeData;
+  if (!scheme) {
+    closeRenameSchemeDialog();
+    return;
+  }
+  if (!newName) {
+    addEditorLog("请输入新的方案名称！", "error");
+    schemeRenameInput.focus();
+    return;
+  }
+  if (newName.length > 20) {
+    addEditorLog("方案名称不能超过 20 个字符！", "error");
+    schemeRenameInput.focus();
+    return;
+  }
+  const schemes = getSchemesForLevel(currentLevelId);
+  const duplicate = schemes.find(s => s.name === newName && s.id !== scheme.id);
+  if (duplicate) {
+    addEditorLog(`已存在名为「${newName}」的方案！`, "error");
+    schemeRenameInput.focus();
+    return;
+  }
+  const target = schemes.find(s => s.id === scheme.id);
+  if (!target) {
+    addEditorLog("方案不存在，可能已被删除。", "error");
+    closeRenameSchemeDialog();
+    renderSchemeList();
+    return;
+  }
+  const oldName = target.name;
+  target.name = newName;
+  target.updatedAt = Date.now();
+  const ok = setSchemesForLevel(currentLevelId, schemes);
+  if (ok) {
+    addEditorLog(`✅ 方案「${oldName}」已重命名为「${newName}」`, "success");
+    updateEditorCurrentSchemeDisplay();
+    closeRenameSchemeDialog();
+    renderSchemeList();
+  } else {
+    addEditorLog("重命名失败！", "error");
+  }
+}
+
+function openDeleteSchemeDialog(scheme) {
+  schemeState.tempSchemeId = scheme.id;
+  schemeState.tempSchemeData = scheme;
+  schemeDeleteMsg.innerHTML = `确定要删除方案「<strong>${escapeHtml(scheme.name)}</strong>」吗？<br>此操作不可撤销。`;
+  schemeDeleteOverlay.classList.remove("hidden");
+}
+
+function closeDeleteSchemeDialog() {
+  schemeDeleteOverlay.classList.add("hidden");
+  schemeState.tempSchemeId = null;
+  schemeState.tempSchemeData = null;
+}
+
+function confirmDeleteScheme() {
+  const scheme = schemeState.tempSchemeData;
+  if (!scheme) {
+    closeDeleteSchemeDialog();
+    return;
+  }
+  let schemes = getSchemesForLevel(currentLevelId);
+  const initialCount = schemes.length;
+  schemes = schemes.filter(s => s.id !== scheme.id);
+  if (schemes.length === initialCount) {
+    addEditorLog("方案不存在，可能已被删除。", "error");
+    closeDeleteSchemeDialog();
+    renderSchemeList();
+    return;
+  }
+  const ok = setSchemesForLevel(currentLevelId, schemes);
+  if (ok) {
+    const wasActive = schemeState.activeSchemeId === scheme.id;
+    if (wasActive) {
+      schemeState.activeSchemeId = null;
+      updateEditorCurrentSchemeDisplay();
+    }
+    addEditorLog(`✅ 方案「${scheme.name}」已删除`, "success");
+    addLog(`🗑️ 布局方案「${scheme.name}」已删除`);
+    closeDeleteSchemeDialog();
+    renderSchemeList();
+  } else {
+    addEditorLog("删除失败！", "error");
+  }
+}
+
+function handleNewSchemeFromManager() {
+  closeSchemeManager();
+  if (!editor.active) {
+    enterEditMode();
+  }
+  setTimeout(openSaveSchemeDialog, 200);
+}
+
+function bindSchemeControls() {
+  if (saveAsSchemeBtn) {
+    saveAsSchemeBtn.addEventListener("click", () => {
+      if (!editor.active) {
+        addLog("请先进入布局编辑模式，调整好布局后再保存为方案。");
+        return;
+      }
+      openSaveSchemeDialog();
+    });
+  }
+  if (manageSchemesBtn) {
+    manageSchemesBtn.addEventListener("click", openSchemeManager);
+  }
+  if (schemeCloseBtn) {
+    schemeCloseBtn.addEventListener("click", closeSchemeManager);
+  }
+  if (schemeOverlay) {
+    schemeOverlay.addEventListener("click", (e) => {
+      if (e.target === schemeOverlay) closeSchemeManager();
+    });
+  }
+  if (schemeNewBtn) {
+    schemeNewBtn.addEventListener("click", handleNewSchemeFromManager);
+  }
+
+  if (schemeSaveCloseBtn) {
+    schemeSaveCloseBtn.addEventListener("click", closeSaveSchemeDialog);
+  }
+  if (schemeSaveCancelBtn) {
+    schemeSaveCancelBtn.addEventListener("click", closeSaveSchemeDialog);
+  }
+  if (schemeSaveConfirmBtn) {
+    schemeSaveConfirmBtn.addEventListener("click", confirmSaveScheme);
+  }
+  if (schemeSaveOverlay) {
+    schemeSaveOverlay.addEventListener("click", (e) => {
+      if (e.target === schemeSaveOverlay) closeSaveSchemeDialog();
+    });
+  }
+  if (schemeNameInput) {
+    schemeNameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") confirmSaveScheme();
+    });
+  }
+
+  if (schemeRenameCloseBtn) {
+    schemeRenameCloseBtn.addEventListener("click", closeRenameSchemeDialog);
+  }
+  if (schemeRenameCancelBtn) {
+    schemeRenameCancelBtn.addEventListener("click", closeRenameSchemeDialog);
+  }
+  if (schemeRenameConfirmBtn) {
+    schemeRenameConfirmBtn.addEventListener("click", confirmRenameScheme);
+  }
+  if (schemeRenameOverlay) {
+    schemeRenameOverlay.addEventListener("click", (e) => {
+      if (e.target === schemeRenameOverlay) closeRenameSchemeDialog();
+    });
+  }
+  if (schemeRenameInput) {
+    schemeRenameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") confirmRenameScheme();
+    });
+  }
+
+  if (schemeDeleteCloseBtn) {
+    schemeDeleteCloseBtn.addEventListener("click", closeDeleteSchemeDialog);
+  }
+  if (schemeDeleteCancelBtn) {
+    schemeDeleteCancelBtn.addEventListener("click", closeDeleteSchemeDialog);
+  }
+  if (schemeDeleteConfirmBtn) {
+    schemeDeleteConfirmBtn.addEventListener("click", confirmDeleteScheme);
+  }
+  if (schemeDeleteOverlay) {
+    schemeDeleteOverlay.addEventListener("click", (e) => {
+      if (e.target === schemeDeleteOverlay) closeDeleteSchemeDialog();
+    });
+  }
+
+  if (schemeApplyCloseBtn) {
+    schemeApplyCloseBtn.addEventListener("click", closeApplySchemeDialog);
+  }
+  if (schemeApplyCancelBtn) {
+    schemeApplyCancelBtn.addEventListener("click", closeApplySchemeDialog);
+  }
+  if (schemeApplyConfirmBtn) {
+    schemeApplyConfirmBtn.addEventListener("click", confirmApplyScheme);
+  }
+  if (schemeApplyOverlay) {
+    schemeApplyOverlay.addEventListener("click", (e) => {
+      if (e.target === schemeApplyOverlay) closeApplySchemeDialog();
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (schemeDeleteOverlay && !schemeDeleteOverlay.classList.contains("hidden")) {
+      closeDeleteSchemeDialog();
+      e.preventDefault();
+    } else if (schemeRenameOverlay && !schemeRenameOverlay.classList.contains("hidden")) {
+      closeRenameSchemeDialog();
+      e.preventDefault();
+    } else if (schemeSaveOverlay && !schemeSaveOverlay.classList.contains("hidden")) {
+      closeSaveSchemeDialog();
+      e.preventDefault();
+    } else if (schemeApplyOverlay && !schemeApplyOverlay.classList.contains("hidden")) {
+      closeApplySchemeDialog();
+      e.preventDefault();
+    } else if (schemeOverlay && !schemeOverlay.classList.contains("hidden")) {
+      closeSchemeManager();
+      e.preventDefault();
+    }
+  });
+}
+
 const replayRecorder = {
   recording: false,
   frames: [],
@@ -1528,6 +2141,7 @@ function updateEditorUI() {
   renderEditorSelectedInfo();
   renderEditorGoodPicker();
   renderEditorLog();
+  updateEditorCurrentSchemeDisplay();
 }
 
 function renderEditorSelectedInfo() {
@@ -2089,10 +2703,15 @@ function openLevelSelect() {
         editor.originalShelves = [];
         editor.logs = [];
       }
+      schemeState.activeSchemeId = null;
+      schemeState.tempSchemeId = null;
+      schemeState.tempSchemeData = null;
+      schemeState.lastSavedSchemeId = null;
       state = freshState();
       resultEl.classList.add("hidden");
       addLog(`已选择关卡：${level.icon} ${level.name}。点击「开始营业」开始游戏。`);
       updateEditorUI();
+      updateEditorCurrentSchemeDisplay();
       renderCrates();
       render();
       renderLevelName();
@@ -2127,8 +2746,10 @@ function init() {
   bindEditorControls();
   bindReplayControls();
   bindSchedulingControls();
+  bindSchemeControls();
   updateEditorUI();
   updateReplayButtonState();
+  updateEditorCurrentSchemeDisplay();
   render();
   renderLevelName();
   renderClerkBadge();
@@ -2499,6 +3120,10 @@ function resetGame() {
     totalServed: 0,
     totalMissed: 0
   };
+  schemeState.activeSchemeId = null;
+  schemeState.tempSchemeId = null;
+  schemeState.tempSchemeData = null;
+  schemeState.lastSavedSchemeId = null;
   if (tutorial.active) {
     tutorial.active = false;
     tutorial.waitingForAction = false;
@@ -2511,6 +3136,7 @@ function resetGame() {
     editor.logs = [];
   }
   updateEditorUI();
+  updateEditorCurrentSchemeDisplay();
   renderCrates();
   renderLevelName();
   render();
