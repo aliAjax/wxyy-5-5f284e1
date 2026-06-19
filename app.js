@@ -3653,3 +3653,5 @@ function renderLog() {
     logEl.appendChild(p);
   });
 }
+
+init();
