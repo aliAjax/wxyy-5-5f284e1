@@ -333,6 +333,34 @@ const nightReportData = {
   levelName: ''
 };
 
+const weekProgressEl = document.getElementById("weekProgress");
+const weekNumberEl = document.getElementById("weekNumber");
+const nightNumberEl = document.getElementById("nightNumber");
+const weekProgressDotsEl = document.getElementById("weekProgressDots");
+const weekArchiveBtn = document.getElementById("weekArchiveBtn");
+
+const weekArchiveOverlay = document.getElementById("weekArchiveOverlay");
+const weekArchiveCloseBtn = document.getElementById("weekArchiveCloseBtn");
+const weekArchiveCloseFooterBtn = document.getElementById("weekArchiveCloseFooterBtn");
+const weekArchiveResetBtn = document.getElementById("weekArchiveResetBtn");
+const weekArchiveBodyEl = document.getElementById("weekArchiveBody");
+const weekArchiveSubtitleEl = document.getElementById("weekArchiveSubtitle");
+
+const weeklyReportOverlay = document.getElementById("weeklyReportOverlay");
+const weeklyReportCloseBtn = document.getElementById("weeklyReportCloseBtn");
+const weeklyReportNewWeekBtn = document.getElementById("weeklyReportNewWeekBtn");
+const weeklyReportBodyEl = document.getElementById("weeklyReportBody");
+const weeklyReportSubtitleEl = document.getElementById("weeklyReportSubtitle");
+
+const WEEK_STORAGE_KEY = "weekArchive";
+const TOTAL_NIGHTS = 7;
+
+const weekState = {
+  weekNumber: 1,
+  currentNight: 1,
+  nights: []
+};
+
 const codexState = {
   selectedGood: null
 };
@@ -1781,6 +1809,451 @@ function loadClerkData() {
 
 function saveClerkData(data) {
   localStorage.setItem("clerkData", JSON.stringify(data));
+}
+
+function loadWeekArchive() {
+  const saved = localStorage.getItem(WEEK_STORAGE_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.weekNumber === 'number' && typeof parsed.currentNight === 'number' && Array.isArray(parsed.nights)) {
+        weekState.weekNumber = parsed.weekNumber;
+        weekState.currentNight = parsed.currentNight;
+        weekState.nights = parsed.nights;
+        return true;
+      }
+    } catch (e) {
+      console.warn("周存档解析失败，使用默认值", e);
+    }
+  }
+  const hasOldClerkData = !!localStorage.getItem("clerkData");
+  const hasOldCodexData = !!localStorage.getItem("codexSalesCount");
+  if (hasOldClerkData || hasOldCodexData) {
+    weekState.weekNumber = 1;
+    weekState.currentNight = 1;
+    weekState.nights = [];
+    saveWeekArchive();
+  }
+  return false;
+}
+
+function saveWeekArchive() {
+  const data = {
+    weekNumber: weekState.weekNumber,
+    currentNight: weekState.currentNight,
+    nights: weekState.nights
+  };
+  localStorage.setItem(WEEK_STORAGE_KEY, JSON.stringify(data));
+}
+
+function initWeekArchive() {
+  loadWeekArchive();
+  while (weekState.nights.length < TOTAL_NIGHTS) {
+    weekState.nights.push(null);
+  }
+  renderWeekProgress();
+}
+
+function createEmptyNightRecord() {
+  return {
+    completed: false,
+    night: weekState.currentNight,
+    levelId: null,
+    levelName: '',
+    levelIcon: '',
+    strategyId: null,
+    strategyName: null,
+    sales: 0,
+    misses: 0,
+    served: 0,
+    serviceRate: 0,
+    finalScore: 0,
+    energy: 0,
+    goals: [],
+    events: [],
+    goodsStats: {},
+    shelfStats: {},
+    timestamp: null
+  };
+}
+
+function renderWeekProgress() {
+  if (weekNumberEl) weekNumberEl.textContent = weekState.weekNumber;
+  if (nightNumberEl) nightNumberEl.textContent = weekState.currentNight;
+  if (weekProgressDotsEl) {
+    weekProgressDotsEl.innerHTML = "";
+    for (let i = 1; i <= TOTAL_NIGHTS; i++) {
+      const dot = document.createElement("div");
+      dot.className = "week-dot";
+      const nightRecord = weekState.nights[i - 1];
+      if (nightRecord && nightRecord.completed) {
+        dot.classList.add("completed");
+      } else if (i === weekState.currentNight) {
+        dot.classList.add("current");
+      }
+      dot.title = `第 ${i} 夜${nightRecord && nightRecord.completed ? ' ✓ 已完成' : i === weekState.currentNight ? ' · 当前' : ''}`;
+      weekProgressDotsEl.appendChild(dot);
+    }
+  }
+}
+
+function openWeekArchive() {
+  renderWeekArchiveBody();
+  weekArchiveOverlay.classList.remove("hidden");
+}
+
+function closeWeekArchive() {
+  weekArchiveOverlay.classList.add("hidden");
+}
+
+function renderWeekArchiveBody() {
+  if (!weekArchiveBodyEl) return;
+  const allCompleted = weekState.nights.filter(n => n && n.completed);
+  const totalSales = allCompleted.reduce((sum, n) => sum + n.sales, 0);
+  const totalMisses = allCompleted.reduce((sum, n) => sum + n.misses, 0);
+  const totalServed = allCompleted.reduce((sum, n) => sum + n.served, 0);
+  const avgServiceRate = allCompleted.length > 0
+    ? Math.round(allCompleted.reduce((sum, n) => sum + n.serviceRate, 0) / allCompleted.length)
+    : 0;
+
+  if (weekArchiveSubtitleEl) {
+    const isFinished = allCompleted.length >= TOTAL_NIGHTS;
+    weekArchiveSubtitleEl.textContent = isFinished
+      ? `第 ${weekState.weekNumber} 周 · 全部 ${TOTAL_NIGHTS} 夜已完成`
+      : `第 ${weekState.weekNumber} 周 · 进行中（${allCompleted.length} / ${TOTAL_NIGHTS} 夜）`;
+  }
+
+  let html = '';
+  if (allCompleted.length > 0) {
+    html += `
+      <div class="week-summary-cards">
+        <div class="week-summary-card">
+          <div class="week-summary-value">¥${totalSales}</div>
+          <div class="week-summary-label">累计销售额</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${avgServiceRate}%</div>
+          <div class="week-summary-label">平均满意率</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${totalServed}</div>
+          <div class="week-summary-label">服务顾客</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${totalMisses}</div>
+          <div class="week-summary-label">累计缺货</div>
+        </div>
+      </div>
+    `;
+  }
+
+  for (let i = 1; i <= TOTAL_NIGHTS; i++) {
+    const record = weekState.nights[i - 1];
+    if (record && record.completed) {
+      const eventsSummary = (record.events || []).map(e => `${e.icon || '⚡'}${e.name}`).join('、') || '无特殊事件';
+      const goalsSummary = (record.goals || []).map(g => `${g.completed ? '✓' : '✗'} ${g.title}`).join('；') || '无目标';
+      html += `
+        <div class="night-archive-card completed">
+          <div class="night-archive-header">
+            <span class="night-archive-title">🌙 第 ${i} 夜 · ${record.levelIcon || '🏪'} ${record.levelName || '未知关卡'}</span>
+            <span class="night-archive-status completed">已完成</span>
+          </div>
+          <div class="night-archive-stats">
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">¥${record.sales}</div>
+              <div class="night-archive-stat-label">销售额</div>
+            </div>
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">${record.serviceRate}%</div>
+              <div class="night-archive-stat-label">满意率</div>
+            </div>
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">${record.finalScore}</div>
+              <div class="night-archive-stat-label">最终评分</div>
+            </div>
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">${record.misses}</div>
+              <div class="night-archive-stat-label">缺货次数</div>
+            </div>
+          </div>
+          <div class="night-archive-detail">
+            <strong>目标达成：</strong>${goalsSummary}<br>
+            ${record.strategyName ? `<strong>排班策略：</strong>${record.strategyName}<br>` : ''}
+          </div>
+          <div class="night-archive-events">
+            <strong>经营事件：</strong>${eventsSummary}
+          </div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="night-archive-card pending">
+          <div class="night-archive-header">
+            <span class="night-archive-title">🌙 第 ${i} 夜</span>
+            <span class="night-archive-status pending">待进行</span>
+          </div>
+          <div class="night-archive-detail">
+            ${i === weekState.currentNight ? '<strong>👉 当前夜数，开始营业后将记录数据</strong>' : '等待前面的夜晚完成后解锁'}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  if (allCompleted.length === 0) {
+    html = `
+      <div class="week-empty-hint">
+        <p style="font-size:36px;">🌙</p>
+        <p><strong>新的一周开始了！</strong></p>
+        <p>完成每一夜后，经营数据会自动记录在这里。</p>
+        <p>坚持完成 ${TOTAL_NIGHTS} 夜后，你将看到完整的周报总结。</p>
+      </div>
+    `;
+  }
+
+  weekArchiveBodyEl.innerHTML = html;
+}
+
+function recordNightResult(nightData) {
+  const record = createEmptyNightRecord();
+  record.completed = true;
+  record.levelId = nightData.levelId;
+  record.levelName = nightData.levelName;
+  record.levelIcon = nightData.levelIcon;
+  record.strategyId = nightData.strategyId;
+  record.strategyName = nightData.strategyName;
+  record.sales = nightData.sales;
+  record.misses = nightData.misses;
+  record.served = nightData.served;
+  record.serviceRate = nightData.serviceRate;
+  record.finalScore = nightData.finalScore;
+  record.energy = nightData.energy;
+  record.goals = nightData.goals || [];
+  record.events = nightData.events || [];
+  record.goodsStats = nightData.goodsStats || {};
+  record.shelfStats = nightData.shelfStats || {};
+  record.timestamp = Date.now();
+
+  const nightIndex = weekState.currentNight - 1;
+  weekState.nights[nightIndex] = record;
+
+  if (weekState.currentNight < TOTAL_NIGHTS) {
+    weekState.currentNight += 1;
+  }
+
+  saveWeekArchive();
+  renderWeekProgress();
+
+  return weekState.currentNight > TOTAL_NIGHTS || weekState.nights.every(n => n && n.completed);
+}
+
+function generateWeeklyReport() {
+  const completed = weekState.nights.filter(n => n && n.completed);
+  if (completed.length === 0) return null;
+
+  const totalSales = completed.reduce((sum, n) => sum + n.sales, 0);
+  const totalMisses = completed.reduce((sum, n) => sum + n.misses, 0);
+  const totalServed = completed.reduce((sum, n) => sum + n.served, 0);
+  const avgServiceRate = Math.round(completed.reduce((sum, n) => sum + n.serviceRate, 0) / completed.length);
+  const totalScore = completed.reduce((sum, n) => sum + n.finalScore, 0);
+
+  const nightRankByScore = [...completed].sort((a, b) => b.finalScore - a.finalScore);
+  const nightRankByMiss = [...completed].sort((a, b) => a.misses - b.misses);
+
+  let grade, gradeTitle, gradeDesc;
+  if (avgServiceRate >= 90 && totalMisses <= 5) {
+    grade = 'S'; gradeTitle = '传奇店长'; gradeDesc = '无可挑剔的一周！服务满意率极高，缺货控制堪称完美。你是真正的便利店之王！';
+  } else if (avgServiceRate >= 80 && totalMisses <= 10) {
+    grade = 'A'; gradeTitle = '金牌店员'; gradeDesc = '出色的表现！整体经营稳健，顾客满意度高。继续保持这份水准！';
+  } else if (avgServiceRate >= 70) {
+    grade = 'B'; gradeTitle = '合格经营者'; gradeDesc = '中规中矩的一周。还有提升空间，重点关注缺货问题和服务效率。';
+  } else if (avgServiceRate >= 50) {
+    grade = 'C'; gradeTitle = '还需努力'; gradeDesc = '本周表现平平，缺货和服务率都需要重点改善。多练习补货路线规划吧！';
+  } else {
+    grade = 'D'; gradeTitle = '新手上路'; gradeDesc = '本周遇到了不少困难。建议先去训练模式磨练基础，再挑战连续经营。';
+  }
+
+  const eventSet = new Set();
+  completed.forEach(n => (n.events || []).forEach(e => eventSet.add(JSON.stringify({ id: e.id, name: e.name, icon: e.icon }))));
+  const uniqueEvents = Array.from(eventSet).map(s => JSON.parse(s));
+
+  return {
+    weekNumber: weekState.weekNumber,
+    totalSales,
+    totalMisses,
+    totalServed,
+    avgServiceRate,
+    totalScore,
+    completedCount: completed.length,
+    nightRankByScore,
+    nightRankByMiss,
+    grade,
+    gradeTitle,
+    gradeDesc,
+    uniqueEvents
+  };
+}
+
+function openWeeklyReport() {
+  const report = generateWeeklyReport();
+  if (!report || !weeklyReportBodyEl) return;
+
+  if (weeklyReportSubtitleEl) {
+    weeklyReportSubtitleEl.textContent = `第 ${report.weekNumber} 周经营总结`;
+  }
+
+  let html = '';
+
+  html += `
+    <div class="weekly-evaluation">
+      <div class="weekly-evaluation-grade">${report.grade}</div>
+      <div class="weekly-evaluation-title">${report.gradeTitle}</div>
+      <div class="weekly-evaluation-desc">${report.gradeDesc}</div>
+    </div>
+  `;
+
+  html += `
+    <div class="weekly-report-section">
+      <h3>📊 本周核心数据</h3>
+      <div class="week-summary-cards">
+        <div class="week-summary-card">
+          <div class="week-summary-value">¥${report.totalSales}</div>
+          <div class="week-summary-label">累计销售额</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${report.avgServiceRate}%</div>
+          <div class="week-summary-label">平均满意率</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${report.totalServed}</div>
+          <div class="week-summary-label">服务顾客总数</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${report.totalMisses}</div>
+          <div class="week-summary-label">累计缺货次数</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  html += `
+    <div class="weekly-report-section">
+      <h3>🏆 最佳夜晚排名（按评分）</h3>
+      <div class="weekly-rank-list">
+        ${report.nightRankByScore.map((n, idx) => `
+          <div class="weekly-rank-item">
+            <div class="weekly-rank-num rank-${idx < 3 ? idx + 1 : 'other'}">${idx + 1}</div>
+            <div class="weekly-rank-info">
+              <div class="weekly-rank-name">第 ${n.night} 夜 · ${n.levelIcon || '🏪'} ${n.levelName}</div>
+              <div class="weekly-rank-meta">服务率 ${n.serviceRate}% · 缺货 ${n.misses} 次${n.strategyName ? ' · ' + n.strategyName : ''}</div>
+            </div>
+            <div class="weekly-rank-value">${n.finalScore} 分</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  html += `
+    <div class="weekly-report-section">
+      <h3>📦 缺货最少排名</h3>
+      <div class="weekly-rank-list">
+        ${report.nightRankByMiss.map((n, idx) => `
+          <div class="weekly-rank-item">
+            <div class="weekly-rank-num rank-${idx < 3 ? idx + 1 : 'other'}">${idx + 1}</div>
+            <div class="weekly-rank-info">
+              <div class="weekly-rank-name">第 ${n.night} 夜 · ${n.levelIcon || '🏪'} ${n.levelName}</div>
+              <div class="weekly-rank-meta">销售额 ¥${n.sales} · 评分 ${n.finalScore}</div>
+            </div>
+            <div class="weekly-rank-value">${n.misses} 次</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  if (report.uniqueEvents.length > 0) {
+    html += `
+      <div class="weekly-report-section">
+        <h3>⚡ 本周触发的经营事件</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${report.uniqueEvents.map(e => `
+            <span style="background:#1e2a23;border:1px solid #3f5246;border-radius:6px;padding:6px 12px;font-size:13px;color:#cdd7cb;">
+              ${e.icon || '⚡'} ${e.name}
+            </span>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  weeklyReportBodyEl.innerHTML = html;
+  weeklyReportOverlay.classList.remove("hidden");
+}
+
+function closeWeeklyReport() {
+  weeklyReportOverlay.classList.add("hidden");
+}
+
+function startNewWeek() {
+  weekState.weekNumber += 1;
+  weekState.currentNight = 1;
+  weekState.nights = [];
+  while (weekState.nights.length < TOTAL_NIGHTS) {
+    weekState.nights.push(null);
+  }
+  saveWeekArchive();
+  renderWeekProgress();
+  closeWeeklyReport();
+  closeWeekArchive();
+  resetGame();
+  addLog(`🌟 第 ${weekState.weekNumber} 周开始！店员等级、商品图鉴和技能已保留，加油吧！`);
+}
+
+function bindWeekArchiveControls() {
+  if (weekArchiveBtn) {
+    weekArchiveBtn.addEventListener("click", openWeekArchive);
+  }
+  if (weekArchiveCloseBtn) {
+    weekArchiveCloseBtn.addEventListener("click", closeWeekArchive);
+  }
+  if (weekArchiveCloseFooterBtn) {
+    weekArchiveCloseFooterBtn.addEventListener("click", closeWeekArchive);
+  }
+  if (weekArchiveResetBtn) {
+    weekArchiveResetBtn.addEventListener("click", () => {
+      if (confirm("确定要开启新周吗？当前周的经营记录将被封存，进入下一周。")) {
+        startNewWeek();
+      }
+    });
+  }
+  if (weeklyReportCloseBtn) {
+    weeklyReportCloseBtn.addEventListener("click", closeWeeklyReport);
+  }
+  if (weeklyReportNewWeekBtn) {
+    weeklyReportNewWeekBtn.addEventListener("click", () => {
+      startNewWeek();
+    });
+  }
+  if (weekArchiveOverlay) {
+    weekArchiveOverlay.addEventListener("click", (e) => {
+      if (e.target === weekArchiveOverlay) closeWeekArchive();
+    });
+  }
+  if (weeklyReportOverlay) {
+    weeklyReportOverlay.addEventListener("click", (e) => {
+      if (e.target === weeklyReportOverlay) closeWeeklyReport();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (weeklyReportOverlay && !weeklyReportOverlay.classList.contains("hidden")) {
+        closeWeeklyReport();
+      } else if (weekArchiveOverlay && !weekArchiveOverlay.classList.contains("hidden")) {
+        closeWeekArchive();
+      }
+    }
+  });
 }
 
 function getSkillLevel(skillId) {
@@ -5096,6 +5569,7 @@ function bindLevelSelectControls() {
 
 function init() {
   state = freshState();
+  initWeekArchive();
   renderCrates();
   bindControls();
   bindTutorialControls();
@@ -5108,6 +5582,7 @@ function init() {
   bindSchemeControls();
   bindTrainingControls();
   bindNightReportControls();
+  bindWeekArchiveControls();
   updateEditorUI();
   updateReplayButtonState();
   updateEditorCurrentSchemeDisplay();
@@ -6202,6 +6677,47 @@ function finish(reason) {
     });
   }
 
+  const currentLvl = getCurrentLevel();
+  const nightData = {
+    levelId: currentLevelId,
+    levelName: currentLvl.name,
+    strategyId: schedulingState.selectedStrategy || null,
+    strategyName: schedulingState.selectedStrategy ? STRATEGY_TEMPLATES[schedulingState.selectedStrategy].name : null,
+    sales: state.sales,
+    misses: state.misses,
+    serviceRate: serviceRate,
+    served: served,
+    missed: missed,
+    score: totalFinalScore,
+    goals: state.goals.map(g => ({
+  title: g.title,
+  completed: g.completed,
+  reward: g.reward
+})),
+    events: eventHistory.slice()
+  };
+  const isWeekComplete = recordNightResult(nightData);
+
+  if (isWeekComplete) {
+    const weeklyReportBtn = document.createElement("button");
+    weeklyReportBtn.id = "resultWeeklyReportBtn";
+    weeklyReportBtn.className = "primary";
+    weeklyReportBtn.type = "button";
+    weeklyReportBtn.style.margin = "0";
+    weeklyReportBtn.style.flex = "1";
+    weeklyReportBtn.textContent = "🏆 查看周报";
+    const btnContainer = resultRestartBtn.parentNode;
+    if (btnContainer) {
+      btnContainer.appendChild(weeklyReportBtn);
+    }
+    const resultWeeklyReportBtn = document.getElementById("resultWeeklyReportBtn");
+    if (resultWeeklyReportBtn) {
+      resultWeeklyReportBtn.addEventListener("click", () => {
+        openWeeklyReport();
+      });
+    }
+  }
+
   addLog(`结算完成，服务${served}位顾客，流失${missed}位，基础分${baseScore}，目标奖励+${goalsBonus}${schedulingBonus > 0 ? '，排班奖励+' + schedulingBonus : ''}，最终评分${totalFinalScore}。获得${expGained}经验。${leveledUp ? '🎉 升级到' + clerkLevels.find(cl => cl.level === newLevel).title + '！' : ''}`);
 
   if (tutorial.active && tutorial.currentStep === 4) {
@@ -6350,6 +6866,7 @@ function render() {
   renderCrates();
   renderActiveEvents();
   renderPredictionPanel();
+  renderWeekProgress();
 
   if (tutorial.active && tutorial.waitingForAction) {
     setTimeout(() => {

@@ -12,6 +12,12 @@
       <div>
         <p class="eyebrow">Night Shift Stocker <span id="levelName" class="level-name"></span></p>
         <h1>深夜便利店补货</h1>
+        <div class="week-progress" id="weekProgress">
+          <span class="week-progress-label">🌙 第 <strong id="weekNumber">1</strong> 周</span>
+          <div class="week-progress-dots" id="weekProgressDots"></div>
+          <span class="week-progress-night">第 <strong id="nightNumber">1</strong> / 7 夜</span>
+          <button id="weekArchiveBtn" class="week-archive-btn" type="button">📋 经营档案</button>
+        </div>
       </div>
       <div class="status-strip">
         <span>时间 <strong id="clock">00:00</strong></span>
@@ -441,6 +447,39 @@
       <div class="night-report-footer">
         <button id="nightReportReplayBtn" class="secondary" type="button">🎬 查看回放</button>
         <button id="nightReportCloseFooterBtn" class="primary" type="button">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="weekArchiveOverlay" class="week-archive-overlay hidden">
+    <div class="week-archive-dialog">
+      <div class="week-archive-header">
+        <div>
+          <h2>📋 连续七夜经营档案</h2>
+          <p class="week-archive-subtitle" id="weekArchiveSubtitle">第 1 周进行中</p>
+        </div>
+        <button id="weekArchiveCloseBtn" class="week-archive-close" type="button">✕</button>
+      </div>
+      <div class="week-archive-body" id="weekArchiveBody"></div>
+      <div class="week-archive-footer">
+        <button id="weekArchiveResetBtn" class="secondary week-reset-btn" type="button">🔄 重开新周</button>
+        <button id="weekArchiveCloseFooterBtn" class="primary" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="weeklyReportOverlay" class="weekly-report-overlay hidden">
+    <div class="weekly-report-dialog">
+      <div class="weekly-report-header">
+        <div>
+          <h2>🏆 第七夜结束 · 周报</h2>
+          <p class="weekly-report-subtitle" id="weeklyReportSubtitle">第 1 周经营总结</p>
+        </div>
+        <button id="weeklyReportCloseBtn" class="weekly-report-close" type="button">✕</button>
+      </div>
+      <div class="weekly-report-body" id="weeklyReportBody"></div>
+      <div class="weekly-report-footer">
+        <button id="weeklyReportNewWeekBtn" class="primary" type="button">🌟 开启新的一周</button>
       </div>
     </div>
   </div>

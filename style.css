@@ -5319,3 +5319,476 @@ h2 {
     font-size: 22px;
   }
 }
+
+.week-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.week-progress-label {
+  font-size: 13px;
+  color: #cdd7cb;
+  white-space: nowrap;
+}
+
+.week-progress-label strong {
+  color: #f0c15d;
+  font-size: 15px;
+}
+
+.week-progress-night {
+  font-size: 13px;
+  color: #cdd7cb;
+  white-space: nowrap;
+}
+
+.week-progress-night strong {
+  color: #fff7cf;
+  font-size: 15px;
+}
+
+.week-progress-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.week-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #334237;
+  border: 2px solid #45584b;
+  transition: all 0.3s ease;
+}
+
+.week-dot.completed {
+  background: linear-gradient(135deg, #74b06a, #5fa854);
+  border-color: #74b06a;
+  box-shadow: 0 0 6px rgba(116, 176, 106, 0.5);
+}
+
+.week-dot.current {
+  background: linear-gradient(135deg, #f0c15d, #e7b951);
+  border-color: #f0c15d;
+  box-shadow: 0 0 8px rgba(240, 193, 93, 0.6);
+  animation: weekDotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes weekDotPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(240, 193, 93, 0.6); }
+  50% { box-shadow: 0 0 14px rgba(240, 193, 93, 0.9); }
+}
+
+.week-archive-btn {
+  background: #243129;
+  border: 1px solid #45584b;
+  color: #cdd7cb;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: auto;
+  margin-top: 0;
+  width: auto;
+}
+
+.week-archive-btn:hover {
+  background: #2e4b42;
+  border-color: #f0c15d;
+  color: #fff7cf;
+}
+
+.week-archive-overlay,
+.weekly-report-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 14, 11, 0.85);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.week-archive-dialog,
+.weekly-report-dialog {
+  background: #223028;
+  border: 2px solid #f0c15d;
+  border-radius: 14px;
+  width: min(780px, calc(100vw - 32px));
+  max-height: min(85vh, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.week-archive-header,
+.weekly-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #45584b;
+  flex-shrink: 0;
+}
+
+.week-archive-header h2,
+.weekly-report-header h2 {
+  margin: 0 0 4px;
+  color: #fff7cf;
+  font-size: 22px;
+}
+
+.week-archive-subtitle,
+.weekly-report-subtitle {
+  margin: 0;
+  color: #8fa192;
+  font-size: 13px;
+}
+
+.week-archive-close,
+.weekly-report-close {
+  background: transparent;
+  border: 0;
+  color: #cdd7cb;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.week-archive-close:hover,
+.weekly-report-close:hover {
+  background: #3f5246;
+  color: #fff7cf;
+}
+
+.week-archive-body,
+.weekly-report-body {
+  overflow-y: auto;
+  padding: 20px 24px;
+  flex: 1;
+}
+
+.week-archive-footer,
+.weekly-report-footer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #3d4f42;
+  background: #18221d;
+  flex-shrink: 0;
+}
+
+.week-archive-footer .primary,
+.week-archive-footer .secondary,
+.weekly-report-footer .primary {
+  flex: 1;
+  margin: 0;
+}
+
+.week-reset-btn {
+  background: #5c3a3a !important;
+  color: #f0d4d4 !important;
+}
+
+.week-reset-btn:hover {
+  background: #7a4a4a !important;
+}
+
+.week-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.week-summary-card {
+  background: #18221d;
+  border: 1px solid #3f5246;
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+}
+
+.week-summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0c15d;
+  line-height: 1.1;
+}
+
+.week-summary-label {
+  font-size: 12px;
+  color: #8fa192;
+  margin-top: 4px;
+}
+
+.night-archive-card {
+  background: #18221d;
+  border: 1px solid #3f5246;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+}
+
+.night-archive-card.completed {
+  border-left: 4px solid #74b06a;
+}
+
+.night-archive-card.pending {
+  opacity: 0.6;
+  border-left: 4px solid #555;
+}
+
+.night-archive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.night-archive-title {
+  font-weight: 700;
+  color: #fff7cf;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.night-archive-status {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.night-archive-status.completed {
+  background: #1e3a2c;
+  color: #a8d5a2;
+}
+
+.night-archive-status.pending {
+  background: #2a2a2a;
+  color: #999;
+}
+
+.night-archive-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.night-archive-stat {
+  background: #17201c;
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.night-archive-stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e7e5d5;
+}
+
+.night-archive-stat-label {
+  font-size: 10px;
+  color: #8fa192;
+}
+
+.night-archive-detail {
+  font-size: 12px;
+  color: #8fa192;
+  line-height: 1.5;
+}
+
+.night-archive-detail strong {
+  color: #cdd7cb;
+}
+
+.night-archive-events {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed #3f5246;
+  font-size: 12px;
+  color: #a0b0a5;
+}
+
+.week-empty-hint {
+  text-align: center;
+  padding: 40px 20px;
+  color: #8fa192;
+}
+
+.week-empty-hint p {
+  margin: 6px 0;
+}
+
+.weekly-report-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #3f5246;
+}
+
+.weekly-report-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.weekly-report-section h3 {
+  color: #f0c15d;
+  margin: 0 0 12px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weekly-rank-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #18221d;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.weekly-rank-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.weekly-rank-num.rank-1 {
+  background: linear-gradient(135deg, #f0c15d, #e7b951);
+  color: #3d2e0a;
+}
+
+.weekly-rank-num.rank-2 {
+  background: linear-gradient(135deg, #c0c0c0, #a0a0a0);
+  color: #2a2a2a;
+}
+
+.weekly-rank-num.rank-3 {
+  background: linear-gradient(135deg, #cd7f32, #b06820);
+  color: #2a1a0a;
+}
+
+.weekly-rank-num.rank-other {
+  background: #243129;
+  color: #8fa192;
+}
+
+.weekly-rank-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.weekly-rank-name {
+  font-weight: 600;
+  color: #fff7cf;
+  font-size: 14px;
+}
+
+.weekly-rank-meta {
+  font-size: 12px;
+  color: #8fa192;
+  margin-top: 2px;
+}
+
+.weekly-rank-value {
+  font-weight: 700;
+  color: #f0c15d;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.weekly-evaluation {
+  background: linear-gradient(135deg, #2a2d1e, #1e2a23);
+  border: 1px solid #f0c15d;
+  border-radius: 10px;
+  padding: 16px 18px;
+  text-align: center;
+}
+
+.weekly-evaluation-grade {
+  font-size: 48px;
+  font-weight: 700;
+  color: #f0c15d;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.weekly-evaluation-title {
+  font-size: 18px;
+  color: #fff7cf;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.weekly-evaluation-desc {
+  font-size: 13px;
+  color: #cdd7cb;
+  line-height: 1.6;
+}
+
+.week-archive-body::-webkit-scrollbar,
+.weekly-report-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.week-archive-body::-webkit-scrollbar-track,
+.weekly-report-body::-webkit-scrollbar-track {
+  background: #18221d;
+  border-radius: 3px;
+}
+
+.week-archive-body::-webkit-scrollbar-thumb,
+.weekly-report-body::-webkit-scrollbar-thumb {
+  background: #3f5246;
+  border-radius: 3px;
+}
+
+.week-archive-body::-webkit-scrollbar-thumb:hover,
+.weekly-report-body::-webkit-scrollbar-thumb:hover {
+  background: #5c7a63;
+}
+
+@media (max-width: 640px) {
+  .week-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .night-archive-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .week-progress {
+    gap: 8px;
+  }
+  .week-archive-btn {
+    order: 5;
+    width: 100%;
+    justify-content: center;
+  }
+}
