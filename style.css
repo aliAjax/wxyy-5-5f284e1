@@ -5792,3 +5792,113 @@ h2 {
     justify-content: center;
   }
 }
+
+.customer-type-icon {
+  font-size: 16px;
+}
+
+.customer-type-label {
+  font-weight: 600;
+}
+
+.waiting-hint {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.sub-arrow {
+  color: #e6a23c;
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.sub-good-name {
+  color: #e6a23c;
+  text-decoration: line-through;
+  opacity: 0.7;
+  margin-right: 2px;
+  font-size: 11px;
+}
+
+.waiting-card.waiting-substitute {
+  border-left-color: #e6a23c;
+  background: linear-gradient(90deg, rgba(230, 162, 60, 0.08) 0%, #243129 60%);
+}
+
+.waiting-card.waiting-substitute .waiting-bar span {
+  background: linear-gradient(90deg, #e6a23c, #74b06a);
+}
+
+.waiting-card.waiting-type-worker {
+  border-left-color: #409eff;
+}
+.waiting-card.waiting-type-worker .waiting-bar span {
+  background: #409eff;
+}
+
+.waiting-card.waiting-type-nighter {
+  border-left-color: #909399;
+}
+.waiting-card.waiting-type-nighter .waiting-bar span {
+  background: #909399;
+}
+
+.waiting-card.waiting-type-picky {
+  border-left-color: #f56c6c;
+}
+.waiting-card.waiting-type-picky .waiting-bar span {
+  background: #f56c6c;
+}
+
+.waiting-card.waiting-type-randomer {
+  border-left-color: #c678dd;
+}
+.waiting-card.waiting-type-randomer .waiting-bar span {
+  background: #c678dd;
+}
+
+.incoming-type-worker {
+  border-left: 3px solid #409eff;
+}
+.incoming-type-nighter {
+  border-left: 3px solid #909399;
+}
+.incoming-type-picky {
+  border-left: 3px solid #f56c6c;
+}
+.incoming-type-randomer {
+  border-left: 3px solid #c678dd;
+}
+
+.customer-on-map.customer-worker {
+  border-color: #409eff;
+}
+.customer-on-map.customer-nighter {
+  border-color: #909399;
+}
+.customer-on-map.customer-picky {
+  border-color: #f56c6c;
+}
+.customer-on-map.customer-randomer {
+  border-color: #c678dd;
+}
+
+.customer-on-map.customer-substitute {
+  box-shadow: 0 0 0 2px #e6a23c inset, 0 0 8px rgba(230, 162, 60, 0.6);
+}
+.customer-on-map.customer-substitute::after {
+  content: "↺";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 9px;
+  background: #e6a23c;
+  color: #141916;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}

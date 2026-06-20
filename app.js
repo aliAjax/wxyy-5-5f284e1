@@ -1691,6 +1691,133 @@ const goods = {
   }
 };
 
+const customerTypes = {
+  normal: {
+    id: "normal",
+    name: "普通顾客",
+    icon: "👤",
+    desc: "普通的深夜顾客，耐心一般，可接受同类替代。",
+    weight: 30,
+    patienceMult: 1.0,
+    willSubstitute: true,
+    substituteRange: "same",
+    satisfactionMiss: 1.0,
+    satisfactionSubstitute: 0.8,
+    color: "#f0c15d",
+    mapClass: ""
+  },
+  worker: {
+    id: "worker",
+    name: "赶时间上班族",
+    icon: "💼",
+    desc: "赶路的上班族，耐心极低，买不到就走，但可接受替代。",
+    weight: 25,
+    patienceMult: 0.5,
+    willSubstitute: true,
+    substituteRange: "any",
+    satisfactionMiss: 1.2,
+    satisfactionSubstitute: 0.9,
+    color: "#d45f4c",
+    mapClass: "customer-worker"
+  },
+  nighter: {
+    id: "nighter",
+    name: "夜归人",
+    icon: "🌙",
+    desc: "深夜归家的人，耐心极高，愿意多等待。",
+    weight: 20,
+    patienceMult: 1.8,
+    willSubstitute: true,
+    substituteRange: "same",
+    satisfactionMiss: 0.8,
+    satisfactionSubstitute: 0.7,
+    color: "#7cb8fa",
+    mapClass: "customer-nighter"
+  },
+  picky: {
+    id: "picky",
+    name: "挑剔顾客",
+    icon: "🎯",
+    desc: "只买指定商品，绝不接受替代，买不到就生气离开。",
+    weight: 15,
+    patienceMult: 1.0,
+    willSubstitute: false,
+    substituteRange: "none",
+    satisfactionMiss: 1.5,
+    satisfactionSubstitute: 0,
+    color: "#c77cfa",
+    mapClass: "customer-picky"
+  },
+  randomer: {
+    id: "randomer",
+    name: "随机顾客",
+    icon: "🎲",
+    desc: "随便逛逛的顾客，任何商品都可以替代，比较好说话。",
+    weight: 10,
+    patienceMult: 1.2,
+    willSubstitute: true,
+    substituteRange: "any",
+    satisfactionMiss: 0.7,
+    satisfactionSubstitute: 1.0,
+    color: "#7cfab0",
+    mapClass: "customer-randomer"
+  }
+};
+
+function getCustomerTypeList() {
+  return Object.values(customerTypes);
+}
+
+function pickRandomCustomerType() {
+  const types = getCustomerTypeList();
+  const totalWeight = types.reduce((sum, t) => sum + t.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const t of types) {
+    r -= t.weight;
+    if (r <= 0) return t.id;
+  }
+  return "normal";
+}
+
+const goodSubstitutes = {
+  snack: ["noodle", "drink"],
+  drink: ["snack", "noodle"],
+  noodle: ["snack", "drink"]
+};
+
+const goodCategories = {
+  snack: "food",
+  noodle: "food",
+  drink: "drink"
+};
+
+function getSubstituteGoods(goodKey, range) {
+  if (range === "none") return [];
+  if (range === "same") {
+    const category = goodCategories[goodKey];
+    return Object.keys(goodCategories).filter(k => k !== goodKey && goodCategories[k] === category);
+  }
+  if (range === "any") {
+    return (goodSubstitutes[goodKey] || []).slice();
+  }
+  return [];
+}
+
+function initGoodObjWithCustomerType(base, defaultVal) {
+  const obj = base ? { ...base } : {};
+  Object.keys(goods).forEach(key => {
+    if (obj[key] === undefined || obj[key] === null) obj[key] = defaultVal;
+  });
+  Object.keys(customerTypes).forEach(ct => {
+    if (obj[`_${ct}`] === undefined || obj[`_${ct}`] === null) obj[`_${ct}`] = defaultVal;
+    Object.keys(goods).forEach(key => {
+      const subKey = `${ct}_${key}`;
+      if (obj[subKey] === undefined || obj[subKey] === null) obj[subKey] = defaultVal;
+    });
+  });
+  return obj;
+}
+
 const clerkLevels = [
   { level: 1, title: "新手店员", expRequired: 0, icon: "👷" },
   { level: 2, title: "实习店员", expRequired: 100, icon: "🧑‍💼", ability: { id: "moveSave", name: "轻步如风", desc: "移动不再消耗体力" } },
@@ -3132,6 +3259,13 @@ function deepCloneStateForReplay(s) {
       shelfMissClone[k] = s.sessionShelfMissCount[k];
     });
   }
+  const cloneCustomer = (c) => ({
+    ...c,
+    customerType: c.customerType || 'normal',
+    isSubstitute: c.isSubstitute || false,
+    originalGoodKey: c.originalGoodKey || c.goodKey,
+    substituteAttempts: c.substituteAttempts || 0
+  });
   return {
     minute: s.minute,
     energy: s.energy,
@@ -3148,17 +3282,26 @@ function deepCloneStateForReplay(s) {
     salesCount: { ...s.salesCount },
     sessionSalesCount: { ...s.sessionSalesCount },
     sessionMissCount: { ...s.sessionMissCount },
+    substituteSalesCount: { ...(s.substituteSalesCount || {}) },
+    substituteMissCount: { ...(s.substituteMissCount || {}) },
+    sessionSubstituteSales: { ...(s.sessionSubstituteSales || {}) },
+    sessionSubstituteMissCount: { ...(s.sessionSubstituteMissCount || {}) },
     sessionShelfStats: shelfStatsClone,
     sessionShelfMissCount: shelfMissClone,
     goals: s.goals.map(g => ({
       ...g
     })),
     customers: {
-      incoming: s.customers.incoming.map(c => ({ ...c })),
-      waiting: s.customers.waiting.map(c => ({ ...c })),
+      incoming: s.customers.incoming.map(c => cloneCustomer(c)),
+      waiting: s.customers.waiting.map(c => cloneCustomer(c)),
       nextId: s.customers.nextId,
       servedCount: s.customers.servedCount,
       missedCount: s.customers.missedCount,
+      substituteServedCount: s.customers.substituteServedCount || 0,
+      substituteMissedCount: s.customers.substituteMissedCount || 0,
+      substituteServedByType: { ...(s.customers.substituteServedByType || {}) },
+      servedByType: { ...(s.customers.servedByType || {}) },
+      missedByType: { ...(s.customers.missedByType || {}) },
       dualEntranceServedCount: s.customers.dualEntranceServedCount || 0,
       dualEntranceMissedCount: s.customers.dualEntranceMissedCount || 0
     },
@@ -3256,6 +3399,10 @@ function replayApplyFrame(index) {
   state.salesCount = { ...frame.salesCount };
   state.sessionSalesCount = { ...frame.sessionSalesCount };
   state.sessionMissCount = { ...frame.sessionMissCount };
+  state.substituteSalesCount = { ...(frame.substituteSalesCount || {}) };
+  state.substituteMissCount = { ...(frame.substituteMissCount || {}) };
+  state.sessionSubstituteSales = { ...(frame.sessionSubstituteSales || {}) };
+  state.sessionSubstituteMissCount = { ...(frame.sessionSubstituteMissCount || {}) };
   state.sessionShelfStats = {};
   if (frame.sessionShelfStats) {
     Object.keys(frame.sessionShelfStats).forEach(k => {
@@ -3270,11 +3417,30 @@ function replayApplyFrame(index) {
   }
   state.goals = frame.goals.map(g => ({ ...g }));
   state.customers = {
-    incoming: frame.customers.incoming.map(c => ({ ...c })),
-    waiting: frame.customers.waiting.map(c => ({ ...c })),
+    incoming: frame.customers.incoming.map(c => ({
+      ...c,
+      customerType: c.customerType || 'normal',
+      isSubstitute: c.isSubstitute || false,
+      originalGoodKey: c.originalGoodKey || c.goodKey,
+      substituteAttempts: c.substituteAttempts || 0
+    })),
+    waiting: frame.customers.waiting.map(c => ({
+      ...c,
+      customerType: c.customerType || 'normal',
+      isSubstitute: c.isSubstitute || false,
+      originalGoodKey: c.originalGoodKey || c.goodKey,
+      substituteAttempts: c.substituteAttempts || 0
+    })),
     nextId: frame.customers.nextId,
     servedCount: frame.customers.servedCount,
-    missedCount: frame.customers.missedCount
+    missedCount: frame.customers.missedCount,
+    substituteServedCount: frame.customers.substituteServedCount || 0,
+    substituteMissedCount: frame.customers.substituteMissedCount || 0,
+    substituteServedByType: { ...(frame.customers.substituteServedByType || {}) },
+    servedByType: { ...(frame.customers.servedByType || {}) },
+    missedByType: { ...(frame.customers.missedByType || {}) },
+    dualEntranceServedCount: frame.customers.dualEntranceServedCount || 0,
+    dualEntranceMissedCount: frame.customers.dualEntranceMissedCount || 0
   };
   state.events = {
     active: frame.events.active.map(e => ({ ...e })),
@@ -4080,6 +4246,7 @@ const training = {
 function freshState(trainingMode = false) {
   let savedSalesCount, salesCount, savedMissCount, missCount, savedMaxSession, maxSession;
   let savedShelfStats, shelfStats, savedLastSession, lastSession;
+  let savedSubSalesCount, substituteSalesCount, savedSubMissCount, substituteMissCount;
 
   if (trainingMode) {
     savedSalesCount = null; salesCount = {};
@@ -4087,6 +4254,8 @@ function freshState(trainingMode = false) {
     savedMaxSession = null; maxSession = {};
     savedShelfStats = null; shelfStats = {};
     savedLastSession = null; lastSession = {};
+    savedSubSalesCount = null; substituteSalesCount = {};
+    savedSubMissCount = null; substituteMissCount = {};
   } else {
     savedSalesCount = localStorage.getItem("codexSalesCount");
     salesCount = savedSalesCount ? JSON.parse(savedSalesCount) : {};
@@ -4098,6 +4267,10 @@ function freshState(trainingMode = false) {
     shelfStats = savedShelfStats ? JSON.parse(savedShelfStats) : {};
     savedLastSession = localStorage.getItem("codexLastSession");
     lastSession = savedLastSession ? JSON.parse(savedLastSession) : {};
+    savedSubSalesCount = localStorage.getItem("codexSubstituteSales");
+    substituteSalesCount = savedSubSalesCount ? JSON.parse(savedSubSalesCount) : {};
+    savedSubMissCount = localStorage.getItem("codexSubstituteMiss");
+    substituteMissCount = savedSubMissCount ? JSON.parse(savedSubMissCount) : {};
   }
   const level = getCurrentLevel();
 
@@ -4136,18 +4309,27 @@ function freshState(trainingMode = false) {
     sessionSalesCount: initGoodObj(null, 0),
     missCount: initGoodObj(missCount, 0),
     sessionMissCount: initGoodObj(null, 0),
+    substituteSalesCount: initGoodObj(substituteSalesCount, 0),
+    substituteMissCount: initGoodObj(substituteMissCount, 0),
     sessionShelfMissCount: {},
     maxSessionSales: initGoodObj(maxSession, 0),
     shelfStats: initShelfStats(shelfStats),
     sessionShelfStats: initShelfStats(null),
     lastSession: initLastSession(lastSession),
     goals: [],
+    sessionSubstituteSales: initGoodObj(null, 0),
+    sessionSubstituteMissCount: initGoodObj(null, 0),
     customers: {
       incoming: [],
       waiting: [],
       nextId: 1,
       servedCount: 0,
       missedCount: 0,
+      substituteServedCount: 0,
+      substituteMissedCount: 0,
+      substituteServedByType: {},
+      servedByType: {},
+      missedByType: {},
       dualEntranceServedCount: 0,
       dualEntranceMissedCount: 0
     },
@@ -4272,8 +4454,12 @@ function updateCodexStats() {
   goodKeys.forEach(key => {
     const sessionSales = state.sessionSalesCount[key] || 0;
     const sessionMisses = state.sessionMissCount[key] || 0;
+    const sessionSubSales = state.sessionSubstituteSales[key] || 0;
+    const sessionSubMisses = state.sessionSubstituteMissCount[key] || 0;
 
     state.missCount[key] = (state.missCount[key] || 0) + sessionMisses;
+    state.substituteSalesCount[key] = (state.substituteSalesCount[key] || 0) + sessionSubSales;
+    state.substituteMissCount[key] = (state.substituteMissCount[key] || 0) + sessionSubMisses;
 
     if (sessionSales > (state.maxSessionSales[key] || 0)) {
       state.maxSessionSales[key] = sessionSales;
@@ -4289,8 +4475,10 @@ function updateCodexStats() {
     state.lastSession[key] = {
       sales: sessionSales,
       misses: sessionMisses,
+      substituteSales: sessionSubSales,
+      substituteMisses: sessionSubMisses,
       date: today,
-      revenue: sessionSales * goods[key].price
+      revenue: (sessionSales + sessionSubSales) * goods[key].price
     };
   });
 
@@ -4299,6 +4487,8 @@ function updateCodexStats() {
   localStorage.setItem("codexMaxSession", JSON.stringify(state.maxSessionSales));
   localStorage.setItem("codexShelfStats", JSON.stringify(state.shelfStats));
   localStorage.setItem("codexLastSession", JSON.stringify(state.lastSession));
+  localStorage.setItem("codexSubstituteSales", JSON.stringify(state.substituteSalesCount || {}));
+  localStorage.setItem("codexSubstituteMiss", JSON.stringify(state.substituteMissCount || {}));
 }
 
 function getCommonShelves(goodKey, topN = 3) {
@@ -4380,6 +4570,8 @@ function renderCodexDetail(goodKey) {
   const commonShelves = getCommonShelves(goodKey, 3);
   const lastSession = state.lastSession[goodKey];
   const compatShelves = getCompatShelves(goodKey);
+  const substituteSold = state.substituteSalesCount?.[goodKey] || 0;
+  const substituteMissed = state.substituteMissCount?.[goodKey] || 0;
 
   const maxThreshold = good.unlockTexts[good.unlockTexts.length - 1]?.threshold || 0;
   const progress = Math.min(100, Math.round((count / maxThreshold) * 100));
@@ -4401,8 +4593,16 @@ function renderCodexDetail(goodKey) {
           <span class="codex-stat-value">${count} 件</span>
         </div>
         <div class="codex-stat">
+          <span class="codex-stat-label">替代销售</span>
+          <span class="codex-stat-value">${substituteSold} 件</span>
+        </div>
+        <div class="codex-stat">
           <span class="codex-stat-label">历史缺货次数</span>
           <span class="codex-stat-value">${missCount} 次</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">替代缺货</span>
+          <span class="codex-stat-value">${substituteMissed} 次</span>
         </div>
         <div class="codex-stat">
           <span class="codex-stat-label">最高单局销量</span>
@@ -4425,6 +4625,10 @@ function renderCodexDetail(goodKey) {
       <div class="codex-stats">
         <div class="codex-stat">
           <span class="codex-stat-label">累计销量</span>
+          <span class="codex-stat-value">--</span>
+        </div>
+        <div class="codex-stat">
+          <span class="codex-stat-label">替代销售</span>
           <span class="codex-stat-value">--</span>
         </div>
         <div class="codex-stat">
@@ -6097,12 +6301,20 @@ function generateIncomingCustomer() {
   const arrivalTick = lastArrival + baseGap + Math.floor(Math.random() * randomRange);
   const baseMaxWait = effectiveCustomerWaitMin + Math.floor(Math.random() * (effectiveCustomerWaitMax - effectiveCustomerWaitMin + 1));
   const ruleWaitBonus = getSpecialRuleWaitBonus();
+  const customerTypeId = pickRandomCustomerType();
+  const customerType = customerTypes[customerTypeId];
+  const typeAdjustedMaxWait = Math.max(1, Math.round(baseMaxWait * customerType.patienceMult));
   state.customers.incoming.push({
     id: state.customers.nextId++,
     goodKey: goodKey,
+    customerType: customerTypeId,
     arrivalTick: arrivalTick,
-    maxWait: baseMaxWait + ruleWaitBonus,
-    _ruleWaitBonus: ruleWaitBonus
+    maxWait: typeAdjustedMaxWait + ruleWaitBonus,
+    _baseMaxWait: baseMaxWait,
+    _ruleWaitBonus: ruleWaitBonus,
+    isSubstitute: false,
+    originalGoodKey: goodKey,
+    substituteAttempts: 0
   });
 }
 
@@ -6123,19 +6335,25 @@ function processCustomerQueue() {
         displayY: shelf ? shelf.y : Math.floor(Math.random() * (level.mapRows - 2)) + 1
       };
       state.customers.waiting.push(waitingCustomer);
-      addLog(`👤 顾客#${customer.id}进店，想要${goods[customer.goodKey].icon}${goods[customer.goodKey].name}。`);
+      const ct = customerTypes[waitingCustomer.customerType || 'normal'];
+      addLog(`${ct.icon} ${ct.name}#${waitingCustomer.id}进店，想要${goods[waitingCustomer.goodKey].icon}${goods[waitingCustomer.goodKey].name}。`);
     } else {
       state.misses += 1;
       state.customers.missedCount += 1;
+      const ctId = customer.customerType || 'normal';
+      state.customers.missedByType[ctId] = (state.customers.missedByType[ctId] || 0) + 1;
       if (customer._dualEntrance) {
         state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
       }
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
+      if (customer.isSubstitute) {
+        state.sessionSubstituteMissCount[customer.originalGoodKey] = (state.sessionSubstituteMissCount[customer.originalGoodKey] || 0) + 1;
+      }
       const shelf = pickBestShelfForGood(customer.goodKey);
       if (shelf) {
         state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
       }
-      recordActualCustomer(customer.goodKey, currentTick, false);
+      recordActualCustomer(customer.goodKey, currentTick, false, ctId, customer.isSubstitute);
       addLog(`👥 店内太拥挤，顾客#${customer.id}直接离开，计入缺货！`);
     }
   });
@@ -6145,14 +6363,22 @@ function processCustomerQueue() {
     const bonusGoodKeys = getCurrentLevelGoodKeys();
     const bonusGoodKey = bonusGoodKeys[Math.floor(Math.random() * bonusGoodKeys.length)];
     const bonusArrival = currentTick + 1;
-    const bonusMaxWait = level.customerWaitMin + Math.floor(Math.random() * (level.customerWaitMax - level.customerWaitMin + 1));
+    const bonusBaseMaxWait = level.customerWaitMin + Math.floor(Math.random() * (level.customerWaitMax - level.customerWaitMin + 1));
+    const bonusCtId = pickRandomCustomerType();
+    const bonusCt = customerTypes[bonusCtId];
+    const bonusTypeWait = Math.max(1, Math.round(bonusBaseMaxWait * bonusCt.patienceMult));
     const bonusCustomer = {
       id: state.customers.nextId++,
       goodKey: bonusGoodKey,
+      customerType: bonusCtId,
       arrivalTick: bonusArrival,
-      maxWait: bonusMaxWait,
+      maxWait: bonusTypeWait,
+      _baseMaxWait: bonusBaseMaxWait,
       _ruleWaitBonus: 0,
-      _dualEntrance: true
+      _dualEntrance: true,
+      isSubstitute: false,
+      originalGoodKey: bonusGoodKey,
+      substituteAttempts: 0
     };
     state.customers.incoming.push(bonusCustomer);
   }
@@ -6167,22 +6393,39 @@ function processCustomerQueue() {
     const result = tryServeCustomer(customer);
     if (result === 'served') {
       continue;
+    } else if (result === 'substituting') {
+      stillWaiting.push(customer);
     } else if (result === 'waiting') {
       customer.waited += 1;
       if (customer.waited >= customer.maxWait) {
+        const ctId = customer.customerType || 'normal';
+        const ct = customerTypes[ctId];
         state.misses += 1;
         state.customers.missedCount += 1;
+        state.customers.missedByType[ctId] = (state.customers.missedByType[ctId] || 0) + 1;
         if (customer._dualEntrance) {
           state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
         }
         state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
-        recordActualCustomer(customer.goodKey, currentTick, false);
+        if (customer.isSubstitute) {
+          state.sessionSubstituteMissCount[customer.originalGoodKey] = (state.sessionSubstituteMissCount[customer.originalGoodKey] || 0) + 1;
+          state.customers.substituteMissedCount += 1;
+        }
+        recordActualCustomer(customer.goodKey, currentTick, false, ctId, customer.isSubstitute);
         const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
         if (shelf) {
           state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
-          addLog(`😠 顾客#${customer.id}等了太久，${shelf.id}货架缺${goods[customer.goodKey].name}，愤怒离开！`);
+          if (customer.isSubstitute) {
+            addLog(`😠 ${ct.icon}${ct.name}#${customer.id}等了太久，${shelf.id}货架缺替代${goods[customer.goodKey].name}（原本要${goods[customer.originalGoodKey].name}），遗憾离开！`);
+          } else {
+            addLog(`😠 ${ct.icon}${ct.name}#${customer.id}等了太久，${shelf.id}货架缺${goods[customer.goodKey].name}，愤怒离开！`);
+          }
         } else {
-          addLog(`😠 顾客#${customer.id}等了太久，没有买到${goods[customer.goodKey].name}，愤怒离开！`);
+          if (customer.isSubstitute) {
+            addLog(`😠 ${ct.icon}${ct.name}#${customer.id}等了太久，没找到替代${goods[customer.goodKey].name}（原本要${goods[customer.originalGoodKey].name}），遗憾离开！`);
+          } else {
+            addLog(`😠 ${ct.icon}${ct.name}#${customer.id}等了太久，没有买到${goods[customer.goodKey].name}，愤怒离开！`);
+          }
         }
       } else {
         stillWaiting.push(customer);
@@ -6204,11 +6447,16 @@ function pickBestShelfForGood(goodKey) {
 
 function tryServeCustomer(customer) {
   const currentTick = Math.floor(state.minute / 5);
-  const shelf = customer.targetShelfId
+  const ctId = customer.customerType || 'normal';
+  const ct = customerTypes[ctId];
+  let shelf = customer.targetShelfId
     ? state.shelves.find(s => s.id === customer.targetShelfId)
     : pickBestShelfForGood(customer.goodKey);
 
   if (!shelf) {
+    if (ct.willSubstitute && !customer.isSubstitute) {
+      return trySubstitute(customer, currentTick);
+    }
     return 'waiting';
   }
 
@@ -6219,6 +6467,9 @@ function tryServeCustomer(customer) {
       customer.displayX = altShelf.x;
       customer.displayY = altShelf.y;
       return tryServeCustomer(customer);
+    }
+    if (ct.willSubstitute && !customer.isSubstitute) {
+      return trySubstitute(customer, currentTick);
     }
     return 'waiting';
   }
@@ -6233,17 +6484,29 @@ function tryServeCustomer(customer) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
     state.customers.servedCount += 1;
+    if (customer.isSubstitute) {
+      state.customers.substituteServedCount += 1;
+      const subKey = 'sub_' + ctId;
+      state.customers.substituteServedByType[subKey] = (state.customers.substituteServedByType[subKey] || 0) + 1;
+      state.sessionSubstituteSales[customer.originalGoodKey] = (state.sessionSubstituteSales[customer.originalGoodKey] || 0) + 1;
+    } else {
+      state.customers.servedByType[ctId] = (state.customers.servedByType[ctId] || 0) + 1;
+    }
     if (customer._dualEntrance) {
       state.customers.dualEntranceServedCount = (state.customers.dualEntranceServedCount || 0) + 1;
     }
-    recordActualCustomer(customer.goodKey, currentTick, true);
+    recordActualCustomer(customer.goodKey, currentTick, true, ctId, customer.isSubstitute);
     const prevCount = state.salesCount[shelf.good] || 0;
     state.salesCount[shelf.good] = prevCount + 1;
     const prevSessionCount = state.sessionSalesCount[shelf.good] || 0;
     state.sessionSalesCount[shelf.good] = prevSessionCount + 1;
     if (!state.sessionShelfStats[shelf.good]) state.sessionShelfStats[shelf.good] = {};
     state.sessionShelfStats[shelf.good][shelf.id] = (state.sessionShelfStats[shelf.good][shelf.id] || 0) + 1;
-    addLog(`✅ 顾客#${customer.id}买走了${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
+    if (customer.isSubstitute) {
+      addLog(`🔄 ${ct.icon}${ct.name}#${customer.id}没找到${goods[customer.originalGoodKey].name}，改买了${goods[shelf.good].icon}${goods[shelf.good].name}（替代购买），${shelf.id}货架剩${shelf.stock}件。`);
+    } else {
+      addLog(`✅ ${ct.icon}${ct.name}#${customer.id}买走了${goods[shelf.good].icon}${goods[shelf.good].name}，${shelf.id}货架剩${shelf.stock}件。`);
+    }
 
     if (!codexOverlay.classList.contains("hidden")) {
       renderCodexList();
@@ -6254,6 +6517,39 @@ function tryServeCustomer(customer) {
     return 'served';
   }
 
+  if (ct.willSubstitute && !customer.isSubstitute) {
+    return trySubstitute(customer, currentTick);
+  }
+
+  return 'waiting';
+}
+
+function trySubstitute(customer, currentTick) {
+  const ctId = customer.customerType || 'normal';
+  const ct = customerTypes[ctId];
+  if (!ct.willSubstitute) return 'waiting';
+  if (customer.substituteAttempts >= 2) return 'waiting';
+
+  const substitutes = getSubstituteGoods(customer.goodKey, ct.substituteRange);
+  const validSubstitutes = substitutes.filter(k => goods[k]);
+  if (validSubstitutes.length === 0) return 'waiting';
+
+  for (const subGood of validSubstitutes) {
+    const subShelf = pickBestShelfForGood(subGood);
+    if (subShelf && subShelf.stock > 0) {
+      customer.isSubstitute = true;
+      customer.originalGoodKey = customer.goodKey;
+      customer.goodKey = subGood;
+      customer.targetShelfId = subShelf.id;
+      customer.displayX = subShelf.x;
+      customer.displayY = subShelf.y;
+      customer.substituteAttempts = (customer.substituteAttempts || 0) + 1;
+      addLog(`🔍 ${ct.icon}${ct.name}#${customer.id}发现${goods[customer.originalGoodKey].name}缺货，尝试寻找替代商品${goods[subGood].icon}${goods[subGood].name}...`);
+      return 'substituting';
+    }
+  }
+
+  customer.substituteAttempts = (customer.substituteAttempts || 0) + 1;
   return 'waiting';
 }
 
@@ -6398,20 +6694,35 @@ function finish(reason) {
     state.customers.waiting.forEach(customer => {
       state.misses += 1;
       state.customers.missedCount += 1;
+      const ctId = customer.customerType || 'normal';
+      state.customers.missedByType[ctId] = (state.customers.missedByType[ctId] || 0) + 1;
       if (customer._dualEntrance) {
         state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
       }
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
-      recordActualCustomer(customer.goodKey, currentTick, false);
+      if (customer.isSubstitute) {
+        state.sessionSubstituteMissCount[customer.originalGoodKey] = (state.sessionSubstituteMissCount[customer.originalGoodKey] || 0) + 1;
+        state.customers.substituteMissedCount += 1;
+      }
+      recordActualCustomer(customer.goodKey, currentTick, false, ctId, customer.isSubstitute);
       const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : pickBestShelfForGood(customer.goodKey);
       if (shelf) {
         state.sessionShelfMissCount[shelf.id] = (state.sessionShelfMissCount[shelf.id] || 0) + 1;
       }
       const good = goods[customer.goodKey];
+      const ct = customerTypes[ctId];
       if (isTraining) {
-        addLog(`🚪 顾客#${customer.id}因训练结束离开，没买到${good.icon}${good.name}。`);
+        if (customer.isSubstitute) {
+          addLog(`🚪 ${ct.icon}${ct.name}#${customer.id}因训练结束离开，没买到替代${good.icon}${good.name}（原本要${goods[customer.originalGoodKey].name}）。`);
+        } else {
+          addLog(`🚪 ${ct.icon}${ct.name}#${customer.id}因训练结束离开，没买到${good.icon}${good.name}。`);
+        }
       } else {
-        addLog(`🚪 顾客#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
+        if (customer.isSubstitute) {
+          addLog(`🚪 ${ct.icon}${ct.name}#${customer.id}因打烊离开，没买到替代${good.icon}${good.name}（原本要${goods[customer.originalGoodKey].name}）。`);
+        } else {
+          addLog(`🚪 ${ct.icon}${ct.name}#${customer.id}因打烊离开，没买到${good.icon}${good.name}。`);
+        }
       }
     });
     state.customers.waiting = [];
@@ -6430,7 +6741,70 @@ function finish(reason) {
   const served = state.customers.servedCount;
   const missed = state.customers.missedCount;
   const total = served + missed;
-  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+  const subServed = state.customers.substituteServedCount || 0;
+  const subMissed = state.customers.substituteMissedCount || 0;
+
+  let satScore = 0;
+  let satTotal = 0;
+  Object.entries(state.customers.servedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionServed || 1.0);
+      satTotal += count;
+    }
+  });
+  Object.entries(state.customers.substituteServedByType || {}).forEach(([subKey, count]) => {
+    if (!subKey.startsWith('sub_')) return;
+    const ctId = subKey.substring(4);
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionSubstitute || 0.8);
+      satTotal += count;
+    }
+  });
+  Object.entries(state.customers.missedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore -= count * (ct.satisfactionMiss || 1.0);
+      satTotal += count;
+    }
+  });
+  const serviceRate = satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
+
+  const typeStatsHtml = Object.entries(customerTypes).map(([ctId, ct]) => {
+    const s = state.customers.servedByType?.[ctId] || 0;
+    const m = state.customers.missedByType?.[ctId] || 0;
+    const sub = state.customers.substituteServedByType?.['sub_' + ctId] || 0;
+    const t = s + m + sub;
+    if (t === 0) return '';
+    return `
+      <div class="result-goal-item" style="background:${ct.color}10; border-left:3px solid ${ct.color};">
+        <span>${ct.icon} ${ct.name}</span>
+        <span class="reward-tag">服务 ${s}${sub > 0 ? ` +替代${sub}` : ''} · 流失 ${m}</span>
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  const statsHtml = `
+    <div class="result-goals">
+      <h3>👥 顾客服务统计</h3>
+      <div class="result-goal-list">
+        <div class="result-goal-item success">
+          <span>✓ 成功服务顾客</span>
+          <span class="reward-tag">${served} 位${subServed > 0 ? `（含替代 ${subServed} 位）` : ''}</span>
+        </div>
+        <div class="result-goal-item fail">
+          <span>✗ 流失顾客（缺货/拥挤）</span>
+          <span class="reward-tag">${missed} 位${subMissed > 0 ? `（含替代失败 ${subMissed} 位）` : ''}</span>
+        </div>
+        <div class="result-goal-item ${serviceRate >= 70 ? 'success' : 'fail'}">
+          <span>${serviceRate >= 70 ? '✓' : '✗'} 加权服务满意率</span>
+          <span class="reward-tag">${serviceRate}%</span>
+        </div>
+      </div>
+      ${typeStatsHtml ? `<h4 style="margin:10px 0 4px; font-size:13px; color:#666;">📊 按顾客类型细分</h4><div class="result-goal-list">${typeStatsHtml}</div>` : ''}
+    </div>
+  `;
 
   const schedulingComparisonHtml = generateSchedulingComparisonHtml();
   if (schedulingState.active && schedulingState.selectedStrategy) {
@@ -6451,26 +6825,6 @@ function finish(reason) {
       ${goalsBonus > 0 ? `<div class="result-bonus">🌟 目标奖励总分：+${goalsBonus} 分</div>` : ''}
     </div>
   ` : '';
-
-  const statsHtml = `
-    <div class="result-goals">
-      <h3>👥 顾客服务统计</h3>
-      <div class="result-goal-list">
-        <div class="result-goal-item success">
-          <span>✓ 成功服务顾客</span>
-          <span class="reward-tag">${served} 位</span>
-        </div>
-        <div class="result-goal-item fail">
-          <span>✗ 流失顾客（缺货/拥挤）</span>
-          <span class="reward-tag">${missed} 位</span>
-        </div>
-        <div class="result-goal-item ${serviceRate >= 70 ? 'success' : 'fail'}">
-          <span>${serviceRate >= 70 ? '✓' : '✗'} 服务满意率</span>
-          <span class="reward-tag">${serviceRate}%</span>
-        </div>
-      </div>
-    </div>
-  `;
 
   const clerkData = loadClerkData();
   const prevLevel = clerkData.level;
@@ -7010,12 +7364,25 @@ function renderBoard() {
           const customerEl = document.createElement("div");
           const remaining = customer.maxWait - customer.waited;
           const isUrgent = remaining <= 1;
-          customerEl.className = `customer-on-map ${isUrgent ? "urgent" : ""}`;
-          customerEl.textContent = goods[customer.goodKey].icon;
+          const ctId = customer.customerType || 'normal';
+          const ct = customerTypes[ctId];
+          const extraClass = ct.mapClass || '';
+          const subClass = customer.isSubstitute ? 'customer-substitute' : '';
+          customerEl.className = `customer-on-map ${isUrgent ? "urgent" : ""} ${extraClass} ${subClass}`;
+          customerEl.textContent = ct.icon;
+          customerEl.style.background = ct.color;
           const offset = idx * 22;
           customerEl.style.top = `8%`;
           customerEl.style.left = `${8 + offset}%`;
-          customerEl.title = `顾客#${customer.id}: ${goods[customer.goodKey].name}，剩余等待${remaining}`;
+          const titleParts = [];
+          titleParts.push(`${ct.name}#${customer.id}`);
+          if (customer.isSubstitute) {
+            titleParts.push(`目标:${goods[customer.originalGoodKey].name}→替代:${goods[customer.goodKey].name}`);
+          } else {
+            titleParts.push(`想要:${goods[customer.goodKey].name}`);
+          }
+          titleParts.push(`剩余等待${remaining}`);
+          customerEl.title = titleParts.join(' | ');
           tile.appendChild(customerEl);
         });
       }
@@ -7054,15 +7421,31 @@ function renderQueue() {
       } else if (remaining <= 2) {
         statusClass = "warning";
       }
+      const ctId = customer.customerType || 'normal';
+      const ct = customerTypes[ctId];
       const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
       const hasStock = shelf && shelf.stock > 0;
+      const substituteClass = customer.isSubstitute ? 'waiting-substitute' : '';
+      const typeClass = `waiting-type-${ctId}`;
       const card = document.createElement("div");
-      card.className = `waiting-card ${statusClass}`;
+      card.className = `waiting-card ${statusClass} ${substituteClass} ${typeClass}`;
+      const goodDisplay = customer.isSubstitute
+        ? `<span class="sub-arrow">${goods[customer.originalGoodKey].icon}→</span>${good.icon}`
+        : good.icon;
+      const goodNameDisplay = customer.isSubstitute
+        ? `<span class="sub-good-name">${goods[customer.originalGoodKey].name}→</span>${good.name}`
+        : good.name;
+      const stockHint = !hasStock && shelf ? '⚠️缺货' : (customer.isSubstitute ? '🔄替代中' : '');
       card.innerHTML = `
-        <div class="waiting-icon">${good.icon}</div>
+        <div class="waiting-icon" style="background:${ct.color}22; border:1px solid ${ct.color};">
+          <span class="customer-type-icon">${ct.icon}</span>
+        </div>
         <div class="waiting-info">
-          <div class="waiting-good">${good.name} ${!hasStock && shelf ? '⚠️缺货' : ''}</div>
-          <div class="waiting-target">${shelf ? `目标: ${shelf.id}货架` : '寻找货架...'}</div>
+          <div class="waiting-good">${goodDisplay} ${goodNameDisplay} ${stockHint ? `<span class="waiting-hint">${stockHint}</span>` : ''}</div>
+          <div class="waiting-target">
+            <span class="customer-type-label" style="color:${ct.color};">${ct.name}</span>
+            ${shelf ? ` · 目标: ${shelf.id}货架` : ' · 寻找货架...'}
+          </div>
         </div>
         <div class="waiting-time">
           <span>剩余</span>
@@ -7088,11 +7471,16 @@ function renderQueue() {
       const good = goods[customer.goodKey];
       const ticksUntil = customer.arrivalTick - currentTick;
       const isHighlight = ticksUntil <= 1;
+      const ctId = customer.customerType || 'normal';
+      const ct = customerTypes[ctId];
       const card = document.createElement("div");
-      card.className = `incoming-card ${isHighlight ? "highlight" : ""}`;
+      card.className = `incoming-card ${isHighlight ? "highlight" : ""} incoming-type-${ctId}`;
       card.innerHTML = `
-        <div class="incoming-icon">${good.icon}</div>
-        <div class="incoming-good">${good.name}</div>
+        <div class="incoming-icon" style="background:${ct.color}22; border:1px solid ${ct.color};">${ct.icon}</div>
+        <div class="incoming-good">
+          <span class="incoming-type-label" style="color:${ct.color}; font-size:11px;">${ct.name}</span><br>
+          ${good.icon} ${good.name}
+        </div>
         <div class="incoming-countdown">${ticksUntil <= 0 ? '即将进店' : ticksUntil + ' 格后'}</div>
       `;
       incomingListEl.appendChild(card);
@@ -7416,7 +7804,11 @@ function startWithSchedulingStrategy() {
     customersByTick: new Array(schedulingState.generatedCurve.length).fill(0),
     demandByGood: {},
     totalServed: 0,
-    totalMissed: 0
+    totalMissed: 0,
+    servedByType: {},
+    missedByType: {},
+    substituteServed: 0,
+    substituteMissed: 0
   };
   getCurrentLevelGoodKeys().forEach(key => {
     schedulingState.actualStats.demandByGood[key] = 0;
@@ -7463,17 +7855,34 @@ function getCurveSegmentForTick(tickIndex) {
   return schedulingState.generatedCurve[idx];
 }
 
-function recordActualCustomer(goodKey, tickIndex, served) {
+function recordActualCustomer(goodKey, tickIndex, served, customerTypeId, isSubstitute) {
   if (!schedulingState.active || !schedulingState.generatedCurve) return;
   const idx = Math.max(0, Math.min(tickIndex, schedulingState.actualStats.customersByTick.length - 1));
   schedulingState.actualStats.customersByTick[idx] += 1;
   if (schedulingState.actualStats.demandByGood[goodKey] !== undefined) {
     schedulingState.actualStats.demandByGood[goodKey] += 1;
   }
+  const ctId = customerTypeId || 'normal';
+  if (!schedulingState.actualStats.servedByType) schedulingState.actualStats.servedByType = {};
+  if (!schedulingState.actualStats.missedByType) schedulingState.actualStats.missedByType = {};
+  if (!schedulingState.actualStats.substituteServed) schedulingState.actualStats.substituteServed = 0;
+  if (!schedulingState.actualStats.substituteMissed) schedulingState.actualStats.substituteMissed = 0;
+  if (!schedulingState.actualStats.substituteServedByType) schedulingState.actualStats.substituteServedByType = {};
   if (served) {
     schedulingState.actualStats.totalServed += 1;
+    if (isSubstitute) {
+      schedulingState.actualStats.substituteServed += 1;
+      const subKey = 'sub_' + ctId;
+      schedulingState.actualStats.substituteServedByType[subKey] = (schedulingState.actualStats.substituteServedByType[subKey] || 0) + 1;
+    } else {
+      schedulingState.actualStats.servedByType[ctId] = (schedulingState.actualStats.servedByType[ctId] || 0) + 1;
+    }
   } else {
     schedulingState.actualStats.totalMissed += 1;
+    if (isSubstitute) {
+      schedulingState.actualStats.substituteMissed += 1;
+    }
+    schedulingState.actualStats.missedByType[ctId] = (schedulingState.actualStats.missedByType[ctId] || 0) + 1;
   }
 }
 
