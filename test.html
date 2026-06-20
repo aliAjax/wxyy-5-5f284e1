@@ -3,1196 +3,459 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>排班挑战单元测试</title>
+  <title>排班挑战逻辑测试</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #f5f5f5;
-      color: #333;
+      margin: 0;
       padding: 24px;
-      line-height: 1.6;
+      background: #f4f6f8;
+      color: #202733;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
     }
-    .container { max-width: 1000px; margin: 0 auto; }
-    h1 { font-size: 24px; margin-bottom: 8px; }
-    .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 24px; }
+    .subtitle { margin: 0 0 20px; color: #667085; font-size: 14px; }
     .summary {
-      background: #fff;
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
       align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      background: #fff;
+      border: 1px solid #d9e0e8;
+      border-radius: 8px;
     }
-    .summary-item { display: flex; align-items: center; gap: 8px; }
-    .summary-value { font-weight: bold; font-size: 18px; }
-    .pass .summary-value { color: #52c41a; }
-    .fail .summary-value { color: #ff4d4f; }
-    .total .summary-value { color: #1890ff; }
-    .run-btn {
-      padding: 8px 20px;
-      background: #1890ff;
+    .summary strong { font-size: 18px; }
+    .pass strong { color: #198754; }
+    .fail strong { color: #c7362f; }
+    button {
+      margin-left: auto;
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 6px;
+      background: #246bfe;
       color: #fff;
-      border: none;
-      border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
-      margin-left: auto;
     }
-    .run-btn:hover { background: #40a9ff; }
-    .test-suite {
-      background: #fff;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .suite {
+      margin-bottom: 14px;
       overflow: hidden;
+      background: #fff;
+      border: 1px solid #d9e0e8;
+      border-radius: 8px;
     }
     .suite-header {
-      padding: 14px 20px;
-      background: #fafafa;
-      border-bottom: 1px solid #f0f0f0;
-      font-weight: bold;
-      font-size: 15px;
       display: flex;
       align-items: center;
-      gap: 8px;
-    }
-    .suite-header .badge {
-      font-size: 12px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-weight: normal;
-    }
-    .badge.pass { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
-    .badge.fail { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
-    .test-list { padding: 8px 0; }
-    .test-item {
-      padding: 10px 20px;
-      display: flex;
-      align-items: flex-start;
       gap: 10px;
-      border-bottom: 1px solid #f5f5f5;
+      padding: 12px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e7ebf0;
+      font-weight: 700;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge.pass { background: #e9f8ee; color: #198754; }
+    .badge.fail { background: #fff0ee; color: #c7362f; }
+    .case {
+      display: flex;
+      gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid #eef1f4;
       font-size: 14px;
     }
-    .test-item:last-child { border-bottom: none; }
-    .test-item:hover { background: #fafafa; }
-    .test-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-    .test-icon.pass { color: #52c41a; }
-    .test-icon.fail { color: #ff4d4f; }
-    .test-name { flex: 1; }
-    .test-item.fail .test-name { color: #ff4d4f; }
-    .test-duration { color: #999; font-size: 12px; flex-shrink: 0; }
-    .error-details {
+    .case:last-child { border-bottom: 0; }
+    .case-name { flex: 1; }
+    .case.pass .mark { color: #198754; }
+    .case.fail .mark, .case.fail .case-name { color: #c7362f; }
+    .duration { flex: 0 0 auto; color: #98a2b3; font-size: 12px; }
+    .error {
       margin-top: 6px;
-      padding: 10px 14px;
-      background: #fff2f0;
-      border: 1px solid #ffccc7;
-      border-radius: 4px;
-      font-family: "SF Mono", Monaco, Consolas, monospace;
-      font-size: 12px;
+      padding: 8px 10px;
       white-space: pre-wrap;
-      color: #cf1322;
-    }
-    .log-box {
-      background: #fff;
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin-top: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    .log-box h3 { font-size: 14px; margin-bottom: 10px; color: #666; }
-    .log-content {
-      font-family: "SF Mono", Monaco, Consolas, monospace;
+      color: #a12822;
+      background: #fff3f1;
+      border: 1px solid #ffd0cb;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
-      background: #fafafa;
-      padding: 12px;
-      border-radius: 4px;
-      max-height: 300px;
-      overflow-y: auto;
-      color: #555;
-      line-height: 1.5;
+    }
+    .log {
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid #d9e0e8;
+      border-radius: 8px;
+    }
+    .log h2 { margin: 0 0 8px; font-size: 15px; }
+    pre {
+      margin: 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 10px;
+      background: #f7f9fb;
+      border-radius: 6px;
+      color: #475467;
+      font-size: 12px;
+    }
+    iframe {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+      border: 0;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🧪 排班挑战单元测试</h1>
-    <p class="subtitle">覆盖客流曲线生成、预期统计计算、实际经营数据记录、排班奖励结算及关键分支</p>
+  <main>
+    <h1>排班挑战逻辑测试</h1>
+    <p class="subtitle">加载真实 index.html/app.js，验证客流曲线、预期统计、实际记录、奖励结算和排班分支。</p>
+    <section class="summary">
+      <span>总计：<strong id="totalCount">0</strong></span>
+      <span class="pass">通过：<strong id="passCount">0</strong></span>
+      <span class="fail">失败：<strong id="failCount">0</strong></span>
+      <button id="runBtn" type="button">重新运行</button>
+    </section>
+    <section id="results"></section>
+    <section class="log">
+      <h2>测试日志</h2>
+      <pre id="log">等待运行...</pre>
+    </section>
+  </main>
+  <iframe id="appFrame" title="app under test"></iframe>
 
-    <div class="summary" id="summary">
-      <div class="summary-item total">总计：<span class="summary-value" id="totalCount">0</span></div>
-      <div class="summary-item pass">通过：<span class="summary-value" id="passCount">0</span></div>
-      <div class="summary-item fail">失败：<span class="summary-value" id="failCount">0</span></div>
-      <button class="run-btn" onclick="runAllTests()">▶ 重新运行测试</button>
-    </div>
+  <script>
+    const suites = [];
+    let currentSuite = null;
+    let api = null;
+    let appWindow = null;
+    let logLines = [];
 
-    <div id="testResults"></div>
-
-    <div class="log-box">
-      <h3>📋 测试日志</h3>
-      <div class="log-content" id="logContent">等待测试运行...</div>
-    </div>
-  </div>
-
-<script>
-// ============================================================
-// 排班挑战核心逻辑（从 app.js 提取的纯函数，去除 DOM 依赖）
-// ============================================================
-
-const goods = {
-  snack: { name: "饭团", price: 12, icon: "🍙" },
-  drink: { name: "热饮", price: 9, icon: "☕" },
-  noodle: { name: "泡面", price: 16, icon: "🍜" }
-};
-
-const customerTypes = {
-  normal: { id: "normal", name: "普通顾客", icon: "👤", weight: 30, patienceMult: 1.0 },
-  worker: { id: "worker", name: "赶时间上班族", icon: "💼", weight: 25, patienceMult: 0.5 },
-  nighter: { id: "nighter", name: "夜归人", icon: "🌙", weight: 20, patienceMult: 1.8 },
-  picky: { id: "picky", name: "挑剔顾客", icon: "🎯", weight: 15, patienceMult: 1.0 },
-  randomer: { id: "randomer", name: "随机顾客", icon: "🎲", weight: 10, patienceMult: 1.2 }
-};
-
-const levels = [
-  {
-    id: 1, name: "街角小店",
-    goodKeys: ["snack", "drink", "noodle"],
-    duration: 120,
-    customerBaseGap: 3,
-    customerRandomRange: 2,
-    maxWaiting: 8
-  }
-];
-
-function seededRandom(seed) {
-  let s = seed >>> 0;
-  return function() {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
-
-function generateBalancedWeights(goodKeys, variance) {
-  const weights = {};
-  goodKeys.forEach(key => {
-    weights[key] = 1.0 + (Math.random() - 0.5) * variance * 2;
-  });
-  return weights;
-}
-
-const STRATEGY_TEMPLATES = {
-  steady: {
-    id: "steady", name: "平稳客流", icon: "🌙",
-    difficulty: "简单", difficultyLevel: 1,
-    tips: ["客流基本稳定", "注意货架不要空置", "体力消耗均匀"],
-    generateCurve: (totalTicks, goodKeys) => {
-      const curve = [];
-      for (let t = 0; t < totalTicks; t++) {
-        const progress = t / totalTicks;
-        let intensity = 1.0;
-        if (progress < 0.1) intensity = 0.7 + progress * 3;
-        else if (progress > 0.85) intensity = 1.0 - (progress - 0.85) * 4;
-        curve.push({
-          tick: t,
-          intensity: Math.max(0.4, intensity + (Math.random() - 0.5) * 0.3),
-          goodWeights: generateBalancedWeights(goodKeys, 0.2)
-        });
-      }
-      return curve;
+    function describe(name, fn) {
+      currentSuite = { name, tests: [] };
+      fn();
+      suites.push(currentSuite);
     }
-  },
-  rushHour: {
-    id: "rushHour", name: "下班高峰", icon: "🚶",
-    difficulty: "中等", difficultyLevel: 2,
-    tips: ["高峰在中段", "提前补满库存", "热饮需求旺盛"],
-    generateCurve: (totalTicks, goodKeys) => {
-      const curve = [];
-      const peakStart = Math.floor(totalTicks * 0.3);
-      const peakEnd = Math.floor(totalTicks * 0.65);
-      const peakCenter = (peakStart + peakEnd) / 2;
-      for (let t = 0; t < totalTicks; t++) {
-        let intensity;
-        if (t < peakStart) {
-          intensity = 0.5 + (t / peakStart) * 0.3;
-        } else if (t > peakEnd) {
-          const decay = (t - peakEnd) / (totalTicks - peakEnd);
-          intensity = 1.0 - decay * 0.5;
-        } else {
-          const dist = Math.abs(t - peakCenter) / ((peakEnd - peakStart) / 2);
-          intensity = 1.8 - dist * 0.6;
-        }
-        intensity += (Math.random() - 0.5) * 0.25;
-        const weights = {};
-        if (t >= peakStart && t <= peakEnd) {
-          weights[goodKeys[0]] = 0.8 + Math.random() * 0.3;
-          weights[goodKeys[1]] = 1.2 + Math.random() * 0.4;
-          weights[goodKeys[2 % goodKeys.length]] = 1.0 + Math.random() * 0.2;
-        } else {
-          Object.assign(weights, generateBalancedWeights(goodKeys, 0.15));
-        }
-        curve.push({
-          tick: t,
-          intensity: Math.max(0.4, intensity),
-          goodWeights: weights
-        });
-      }
-      return curve;
+
+    function it(name, fn) {
+      currentSuite.tests.push({ name, fn });
     }
-  },
-  randomBurst: {
-    id: "randomBurst", name: "随机爆单", icon: "⚡",
-    difficulty: "困难", difficultyLevel: 3,
-    tips: ["爆单点不可预测", "每次补货尽量补满", "体力要预留"],
-    generateCurve: (totalTicks, goodKeys) => {
-      const curve = [];
-      const burstCount = 2 + Math.floor(Math.random() * 2);
-      const burstPositions = [];
-      for (let i = 0; i < burstCount; i++) {
-        burstPositions.push(Math.floor(totalTicks * (0.2 + (i / burstCount) * 0.6 + (Math.random() - 0.5) * 0.1)));
+
+    function expect(actual) {
+      return {
+        toBe(expected) {
+          if (actual !== expected) throw new Error(`期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
+        },
+        toEqual(expected) {
+          const a = JSON.stringify(actual);
+          const b = JSON.stringify(expected);
+          if (a !== b) throw new Error(`期望 ${b}，实际 ${a}`);
+        },
+        toBeDefined() {
+          if (actual === undefined) throw new Error("期望已定义，实际为 undefined");
+        },
+        toBeNull() {
+          if (actual !== null) throw new Error(`期望 null，实际 ${JSON.stringify(actual)}`);
+        },
+        toBeTruthy() {
+          if (!actual) throw new Error(`期望真值，实际 ${JSON.stringify(actual)}`);
+        },
+        toBeGreaterThan(expected) {
+          if (!(actual > expected)) throw new Error(`期望 ${actual} > ${expected}`);
+        },
+        toBeGreaterThanOrEqual(expected) {
+          if (!(actual >= expected)) throw new Error(`期望 ${actual} >= ${expected}`);
+        },
+        toBeLessThanOrEqual(expected) {
+          if (!(actual <= expected)) throw new Error(`期望 ${actual} <= ${expected}`);
+        },
+        toHaveLength(expected) {
+          if (!actual || actual.length !== expected) throw new Error(`期望长度 ${expected}，实际 ${actual && actual.length}`);
+        },
+        toBeCloseTo(expected, precision = 2) {
+          const threshold = Math.pow(10, -precision) / 2;
+          if (Math.abs(actual - expected) > threshold) throw new Error(`期望接近 ${expected}，实际 ${actual}`);
+        }
+      };
+    }
+
+    function seededRandom(seed) {
+      let s = seed >>> 0;
+      return function() {
+        s = (s * 1664525 + 1013904223) >>> 0;
+        return s / 0xffffffff;
+      };
+    }
+
+    function withSeed(seed, fn) {
+      const original = appWindow.Math.random;
+      appWindow.Math.random = seededRandom(seed);
+      try {
+        return fn();
+      } finally {
+        appWindow.Math.random = original;
       }
-      const burstWidth = Math.max(2, Math.floor(totalTicks * 0.08));
-      for (let t = 0; t < totalTicks; t++) {
-        let intensity = 0.6 + Math.random() * 0.3;
-        for (const pos of burstPositions) {
-          const dist = Math.abs(t - pos);
-          if (dist < burstWidth) {
-            const boost = (1 - dist / burstWidth) * 1.6;
-            intensity += boost;
+    }
+
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function loadAppFrame() {
+      return new Promise((resolve, reject) => {
+        const frame = document.getElementById("appFrame");
+        frame.onload = () => {
+          appWindow = frame.contentWindow;
+          api = appWindow.__schedulingTestApi;
+          if (!api) {
+            reject(new Error("未找到真实页面测试接口 window.__schedulingTestApi"));
+            return;
           }
-        }
-        const weights = {};
-        goodKeys.forEach(key => {
-          weights[key] = 0.6 + Math.random() * 1.2;
-        });
-        curve.push({
-          tick: t,
-          intensity: Math.max(0.4, Math.min(2.5, intensity)),
-          goodWeights: weights
-        });
-      }
-      return curve;
-    }
-  },
-  preferenceShift: {
-    id: "preferenceShift", name: "商品偏好波动", icon: "📊",
-    difficulty: "困难", difficultyLevel: 3,
-    tips: ["热门商品周期性切换", "优先补热销货架", "保持灵活"],
-    generateCurve: (totalTicks, goodKeys) => {
-      const curve = [];
-      const phaseCount = 3 + Math.floor(Math.random() * 2);
-      const phaseLength = Math.floor(totalTicks / phaseCount);
-      for (let t = 0; t < totalTicks; t++) {
-        const phase = Math.min(phaseCount - 1, Math.floor(t / phaseLength));
-        const phaseProgress = (t % phaseLength) / phaseLength;
-        const baseIntensity = 0.85 + (Math.random() - 0.5) * 0.2;
-        const weights = {};
-        const favoredIndex = phase % goodKeys.length;
-        const nextFavoredIndex = (phase + 1) % goodKeys.length;
-        goodKeys.forEach((key, idx) => {
-          if (idx === favoredIndex) {
-            weights[key] = 1.8 - phaseProgress * 0.8 + (Math.random() - 0.5) * 0.2;
-          } else if (idx === nextFavoredIndex) {
-            weights[key] = 0.8 + phaseProgress * 1.0 + (Math.random() - 0.5) * 0.2;
-          } else {
-            weights[key] = 0.5 + Math.random() * 0.3;
-          }
-        });
-        curve.push({
-          tick: t,
-          intensity: baseIntensity,
-          goodWeights: weights
-        });
-      }
-      return curve;
-    }
-  }
-};
-
-const schedulingState = {
-  active: false,
-  selectedStrategy: null,
-  generatedCurve: null,
-  previewData: null,
-  expectedStats: null,
-  actualStats: {
-    customersByTick: [],
-    demandByGood: {},
-    totalServed: 0,
-    totalMissed: 0
-  }
-};
-
-function calculateExpectedStats(curve, goodKeys, level) {
-  let totalExpectedCustomers = 0;
-  const expectedDemandByGood = {};
-  const expectedCustomerTypes = {};
-  goodKeys.forEach(key => expectedDemandByGood[key] = 0);
-  Object.keys(customerTypes).forEach(type => expectedCustomerTypes[type] = 0);
-  let maxIntensity = 0;
-  let pressureTicks = 0;
-  curve.forEach((segment) => {
-    const arrivalRate = level.customerBaseGap > 0 ? segment.intensity / level.customerBaseGap : segment.intensity;
-    const expectedCount = Math.max(0, Math.round(arrivalRate * 1.2));
-    totalExpectedCustomers += expectedCount;
-    if (segment.intensity > maxIntensity) maxIntensity = segment.intensity;
-    if (segment.intensity >= 1.3) pressureTicks++;
-    goodKeys.forEach(key => {
-      const weight = segment.goodWeights[key] || 1;
-      const totalWeight = goodKeys.reduce((sum, k) => sum + (segment.goodWeights[k] || 1), 0);
-      expectedDemandByGood[key] += Math.round(expectedCount * (weight / totalWeight));
-    });
-    Object.entries(customerTypes).forEach(([type, ct]) => {
-      expectedCustomerTypes[type] += Math.round(expectedCount * (ct.weight / 100));
-    });
-  });
-  const avgPressure = curve.reduce((sum, s) => sum + s.intensity, 0) / curve.length;
-  let overallRisk;
-  if (avgPressure < 0.9 && pressureTicks < curve.length * 0.2) {
-    overallRisk = { label: "低", level: "low" };
-  } else if (avgPressure < 1.2 && pressureTicks < curve.length * 0.4) {
-    overallRisk = { label: "中", level: "medium" };
-  } else {
-    overallRisk = { label: "高", level: "high" };
-  }
-  return {
-    totalExpectedCustomers,
-    expectedDemandByGood,
-    expectedCustomerTypes,
-    maxIntensity,
-    avgPressure,
-    pressureTicks,
-    overallRisk,
-    curveLength: curve.length
-  };
-}
-
-function generatePreviewData(curve, stats, goodKeys, strategy) {
-  const segments = 20;
-  const ticksPerSegment = Math.max(1, Math.ceil(curve.length / segments));
-  const curveBars = [];
-  for (let i = 0; i < segments; i++) {
-    const start = i * ticksPerSegment;
-    const end = Math.min(curve.length, start + ticksPerSegment);
-    let sum = 0;
-    for (let j = start; j < end; j++) {
-      sum += curve[j].intensity;
-    }
-    const avg = sum / (end - start);
-    let level = 1;
-    if (avg < 0.6) level = 1;
-    else if (avg < 0.85) level = 2;
-    else if (avg < 1.1) level = 3;
-    else if (avg < 1.4) level = 4;
-    else if (avg < 1.8) level = 5;
-    else level = 6;
-    curveBars.push({ level, intensity: avg });
-  }
-  const goodDemandList = goodKeys.map(key => {
-    const demand = stats.expectedDemandByGood[key] || 0;
-    const total = Object.values(stats.expectedDemandByGood).reduce((a, b) => a + b, 0) || 1;
-    const ratio = demand / total;
-    let level;
-    if (ratio < 0.25) level = "low";
-    else if (ratio < 0.4) level = "medium";
-    else level = "high";
-    return { key, demand, ratio, level };
-  });
-  return { curveBars, goodDemandList };
-}
-
-function getCurveSegmentForTick(tickIndex) {
-  if (!schedulingState.generatedCurve) return null;
-  const idx = Math.max(0, Math.min(tickIndex, schedulingState.generatedCurve.length - 1));
-  return schedulingState.generatedCurve[idx];
-}
-
-function recordActualCustomer(goodKey, tickIndex, served, customerTypeId, isSubstitute) {
-  if (!schedulingState.active || !schedulingState.generatedCurve) return;
-  const idx = Math.max(0, Math.min(tickIndex, schedulingState.actualStats.customersByTick.length - 1));
-  schedulingState.actualStats.customersByTick[idx] += 1;
-  if (schedulingState.actualStats.demandByGood[goodKey] !== undefined) {
-    schedulingState.actualStats.demandByGood[goodKey] += 1;
-  }
-  const ctId = customerTypeId || 'normal';
-  if (!schedulingState.actualStats.servedByType) schedulingState.actualStats.servedByType = {};
-  if (!schedulingState.actualStats.missedByType) schedulingState.actualStats.missedByType = {};
-  if (!schedulingState.actualStats.substituteServed) schedulingState.actualStats.substituteServed = 0;
-  if (!schedulingState.actualStats.substituteMissed) schedulingState.actualStats.substituteMissed = 0;
-  if (!schedulingState.actualStats.substituteServedByType) schedulingState.actualStats.substituteServedByType = {};
-  if (served) {
-    schedulingState.actualStats.totalServed += 1;
-    if (isSubstitute) {
-      schedulingState.actualStats.substituteServed += 1;
-      const subKey = 'substitute_' + ctId;
-      schedulingState.actualStats.substituteServedByType[subKey] = (schedulingState.actualStats.substituteServedByType[subKey] || 0) + 1;
-    } else {
-      schedulingState.actualStats.servedByType[ctId] = (schedulingState.actualStats.servedByType[ctId] || 0) + 1;
-    }
-  } else {
-    schedulingState.actualStats.totalMissed += 1;
-    if (isSubstitute) {
-      schedulingState.actualStats.substituteMissed += 1;
-    }
-    schedulingState.actualStats.missedByType[ctId] = (schedulingState.actualStats.missedByType[ctId] || 0) + 1;
-  }
-}
-
-function calculateSchedulingBonus(serviceRate, missed) {
-  let bonus = 0;
-  const strategy = STRATEGY_TEMPLATES[schedulingState.selectedStrategy];
-  if (!strategy) return 0;
-  const difficultyMult = strategy.difficultyLevel;
-  if (serviceRate >= 85) bonus += 30 * difficultyMult;
-  else if (serviceRate >= 70) bonus += 15 * difficultyMult;
-  if (missed === 0) bonus += 20 * difficultyMult;
-  else if (missed <= 2) bonus += 10 * difficultyMult;
-  return bonus;
-}
-
-function resetSchedulingState() {
-  schedulingState.active = false;
-  schedulingState.selectedStrategy = null;
-  schedulingState.generatedCurve = null;
-  schedulingState.previewData = null;
-  schedulingState.expectedStats = null;
-  schedulingState.actualStats = {
-    customersByTick: [],
-    demandByGood: {},
-    totalServed: 0,
-    totalMissed: 0
-  };
-}
-
-function initActualStats(goodKeys) {
-  schedulingState.actualStats = {
-    customersByTick: new Array(schedulingState.generatedCurve.length).fill(0),
-    demandByGood: {},
-    totalServed: 0,
-    totalMissed: 0,
-    servedByType: {},
-    missedByType: {},
-    substituteServed: 0,
-    substituteMissed: 0
-  };
-  goodKeys.forEach(key => {
-    schedulingState.actualStats.demandByGood[key] = 0;
-  });
-}
-
-const TRAINING_THEMES = {
-  scheduling: {
-    id: "scheduling",
-    name: "排班预测练习",
-    config: {
-      showPreview: true,
-      forceStrategy: "rushHour",
-      durationMultiplier: 1.0
-    }
-  }
-};
-
-// ============================================================
-// 轻量级测试框架
-// ============================================================
-
-const testResults = [];
-let currentSuite = null;
-let logLines = [];
-
-function log(msg) {
-  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  logLines.push(`[${time}] ${msg}`);
-}
-
-function describe(name, fn) {
-  currentSuite = { name, tests: [], beforeEach: null, afterEach: null };
-  fn();
-  testResults.push(currentSuite);
-}
-
-function beforeEach(fn) {
-  if (currentSuite) currentSuite.beforeEach = fn;
-}
-
-function afterEach(fn) {
-  if (currentSuite) currentSuite.afterEach = fn;
-}
-
-function it(name, fn) {
-  if (!currentSuite) return;
-  currentSuite.tests.push({ name, fn });
-}
-
-function expect(actual) {
-  return {
-    toBe(expected) {
-      if (actual !== expected) {
-        throw new Error(`期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
-      }
-    },
-    toEqual(expected) {
-      const a = JSON.stringify(actual);
-      const b = JSON.stringify(expected);
-      if (a !== b) {
-        throw new Error(`期望 ${b}，实际 ${a}`);
-      }
-    },
-    toBeGreaterThan(expected) {
-      if (!(actual > expected)) {
-        throw new Error(`期望 ${actual} > ${expected}`);
-      }
-    },
-    toBeLessThan(expected) {
-      if (!(actual < expected)) {
-        throw new Error(`期望 ${actual} < ${expected}`);
-      }
-    },
-    toBeGreaterThanOrEqual(expected) {
-      if (!(actual >= expected)) {
-        throw new Error(`期望 ${actual} >= ${expected}`);
-      }
-    },
-    toBeLessThanOrEqual(expected) {
-      if (!(actual <= expected)) {
-        throw new Error(`期望 ${actual} <= ${expected}`);
-      }
-    },
-    toBeTruthy() {
-      if (!actual) {
-        throw new Error(`期望真值，实际 ${JSON.stringify(actual)}`);
-      }
-    },
-    toBeFalsy() {
-      if (actual) {
-        throw new Error(`期望假值，实际 ${JSON.stringify(actual)}`);
-      }
-    },
-    toBeNull() {
-      if (actual !== null) {
-        throw new Error(`期望 null，实际 ${JSON.stringify(actual)}`);
-      }
-    },
-    toBeDefined() {
-      if (actual === undefined) {
-        throw new Error(`期望已定义，实际为 undefined`);
-      }
-    },
-    toContain(item) {
-      if (!Array.isArray(actual) || !actual.includes(item)) {
-        throw new Error(`期望数组包含 ${JSON.stringify(item)}，实际 ${JSON.stringify(actual)}`);
-      }
-    },
-    toHaveLength(len) {
-      if (actual.length !== len) {
-        throw new Error(`期望长度 ${len}，实际 ${actual.length}`);
-      }
-    },
-    toBeCloseTo(expected, precision = 2) {
-      const threshold = Math.pow(10, -precision) / 2;
-      if (Math.abs(actual - expected) > threshold) {
-        throw new Error(`期望接近 ${expected}，实际 ${actual}`);
-      }
-    }
-  };
-}
-
-// ============================================================
-// 测试用例
-// ============================================================
-
-describe('客流曲线生成', () => {
-
-  it('seededRandom 应生成稳定的伪随机序列（固定seed结果一致）', () => {
-    const rand1 = seededRandom(42);
-    const rand2 = seededRandom(42);
-    for (let i = 0; i < 10; i++) {
-      expect(rand1()).toBeCloseTo(rand2(), 8);
-    }
-  });
-
-  it('seededRandom 不同seed应生成不同序列', () => {
-    const rand1 = seededRandom(42);
-    const rand2 = seededRandom(99);
-    let hasDiff = false;
-    for (let i = 0; i < 5; i++) {
-      if (rand1() !== rand2()) { hasDiff = true; break; }
-    }
-    expect(hasDiff).toBe(true);
-  });
-
-  it('平稳客流策略应生成指定长度的曲线', () => {
-    Math.random = seededRandom(100);
-    const curve = STRATEGY_TEMPLATES.steady.generateCurve(24, ["snack", "drink", "noodle"]);
-    expect(curve).toHaveLength(24);
-  });
-
-  it('平稳客流曲线每个tick应包含intensity和goodWeights', () => {
-    Math.random = seededRandom(101);
-    const curve = STRATEGY_TEMPLATES.steady.generateCurve(10, ["snack", "drink", "noodle"]);
-    curve.forEach(seg => {
-      expect(seg.intensity).toBeGreaterThanOrEqual(0.4);
-      expect(Object.keys(seg.goodWeights)).toHaveLength(3);
-      expect(seg.goodWeights.snack).toBeDefined();
-      expect(seg.goodWeights.drink).toBeDefined();
-      expect(seg.goodWeights.noodle).toBeDefined();
-    });
-  });
-
-  it('平稳客流策略：固定seed下结果应完全一致', () => {
-    Math.random = seededRandom(2024);
-    const curve1 = STRATEGY_TEMPLATES.steady.generateCurve(12, ["snack", "drink", "noodle"]);
-    Math.random = seededRandom(2024);
-    const curve2 = STRATEGY_TEMPLATES.steady.generateCurve(12, ["snack", "drink", "noodle"]);
-    expect(curve1.length).toBe(curve2.length);
-    for (let i = 0; i < curve1.length; i++) {
-      expect(curve1[i].intensity).toBeCloseTo(curve2[i].intensity, 8);
-      expect(curve1[i].goodWeights.snack).toBeCloseTo(curve2[i].goodWeights.snack, 8);
-    }
-  });
-
-  it('下班高峰策略：高峰时段(30%~65%)强度应高于低峰', () => {
-    Math.random = seededRandom(300);
-    const totalTicks = 40;
-    const curve = STRATEGY_TEMPLATES.rushHour.generateCurve(totalTicks, ["snack", "drink", "noodle"]);
-    const peakStart = Math.floor(totalTicks * 0.3);
-    const peakEnd = Math.floor(totalTicks * 0.65);
-    let peakAvg = 0, lowAvg = 0, peakCount = 0, lowCount = 0;
-    curve.forEach((seg, i) => {
-      if (i >= peakStart && i <= peakEnd) {
-        peakAvg += seg.intensity; peakCount++;
-      } else {
-        lowAvg += seg.intensity; lowCount++;
-      }
-    });
-    peakAvg /= peakCount; lowAvg /= lowCount;
-    expect(peakAvg).toBeGreaterThan(lowAvg);
-  });
-
-  it('下班高峰策略：固定seed下结果稳定', () => {
-    Math.random = seededRandom(500);
-    const c1 = STRATEGY_TEMPLATES.rushHour.generateCurve(20, ["snack", "drink", "noodle"]);
-    Math.random = seededRandom(500);
-    const c2 = STRATEGY_TEMPLATES.rushHour.generateCurve(20, ["snack", "drink", "noodle"]);
-    expect(c1[5].intensity).toBeCloseTo(c2[5].intensity, 8);
-    expect(c1[5].goodWeights.drink).toBeCloseTo(c2[5].goodWeights.drink, 8);
-  });
-
-  it('随机爆单策略：峰值强度最高应超过1.5', () => {
-    Math.random = seededRandom(600);
-    const curve = STRATEGY_TEMPLATES.randomBurst.generateCurve(50, ["snack", "drink", "noodle"]);
-    const maxIntensity = Math.max(...curve.map(s => s.intensity));
-    expect(maxIntensity).toBeGreaterThan(1.5);
-  });
-
-  it('商品偏好波动策略：不同阶段应存在favored商品', () => {
-    Math.random = seededRandom(700);
-    const curve = STRATEGY_TEMPLATES.preferenceShift.generateCurve(30, ["snack", "drink", "noodle"]);
-    let foundFavored = false;
-    for (let phase = 0; phase < 3; phase++) {
-      const seg = curve[phase * 10];
-      const weights = Object.values(seg.goodWeights);
-      if (Math.max(...weights) > 1.2) { foundFavored = true; break; }
-    }
-    expect(foundFavored).toBe(true);
-  });
-
-  it('generateBalancedWeights 所有权重应在合理范围', () => {
-    Math.random = seededRandom(800);
-    for (let i = 0; i < 20; i++) {
-      const w = generateBalancedWeights(["snack", "drink", "noodle"], 0.3);
-      Object.values(w).forEach(v => {
-        expect(v).toBeGreaterThanOrEqual(0.7);
-        expect(v).toBeLessThanOrEqual(1.3);
+          api.stopTimer();
+          resolve();
+        };
+        frame.onerror = () => reject(new Error("无法加载 index.html"));
+        localStorage.setItem("tutorialCompleted", "true");
+        frame.src = `index.html?test=${Date.now()}`;
       });
     }
-  });
 
-});
+    function resetApp() {
+      api.resetForTest();
+      api.stopTimer();
+    }
 
-describe('预期统计计算', () => {
+    describe("客流曲线生成", () => {
+      it("固定 seed 下平稳客流曲线结果稳定", () => {
+        const goodKeys = api.getCurrentLevelGoodKeys();
+        const first = withSeed(2024, () => api.STRATEGY_TEMPLATES.steady.generateCurve(12, goodKeys));
+        const second = withSeed(2024, () => api.STRATEGY_TEMPLATES.steady.generateCurve(12, goodKeys));
+        expect(first).toHaveLength(12);
+        expect(first[3].intensity).toBeCloseTo(second[3].intensity, 8);
+        expect(first[3].goodWeights.snack).toBeCloseTo(second[3].goodWeights.snack, 8);
+      });
 
-  it('calculateExpectedStats 应计算合理的总预期顾客数', () => {
-    const curve = [
-      { tick: 0, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 1, intensity: 1.5, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 2, intensity: 2.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 3, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 4, intensity: 0.5, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } }
-    ];
-    const level = { customerBaseGap: 1 };
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], level);
-    expect(stats.totalExpectedCustomers).toBeGreaterThan(0);
-    expect(stats.curveLength).toBe(5);
-  });
+      it("下班高峰策略在高峰时段强度高于低峰", () => {
+        const curve = withSeed(300, () => api.STRATEGY_TEMPLATES.rushHour.generateCurve(40, api.getCurrentLevelGoodKeys()));
+        const peakStart = Math.floor(curve.length * 0.3);
+        const peakEnd = Math.floor(curve.length * 0.65);
+        let peakSum = 0;
+        let lowSum = 0;
+        let peakCount = 0;
+        let lowCount = 0;
+        curve.forEach((segment, index) => {
+          if (index >= peakStart && index <= peakEnd) {
+            peakSum += segment.intensity;
+            peakCount += 1;
+          } else {
+            lowSum += segment.intensity;
+            lowCount += 1;
+          }
+        });
+        expect(peakSum / peakCount).toBeGreaterThan(lowSum / lowCount);
+      });
 
-  it('calculateExpectedStats 所有商品需求之和应约等于总顾客数', () => {
-    const curve = [
-      { tick: 0, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 1, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 2, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 3, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 4, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } },
-      { tick: 5, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.3, noodle: 0.3 } }
-    ];
-    const level = { customerBaseGap: 1 };
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], level);
-    const totalDemand = Object.values(stats.expectedDemandByGood).reduce((a, b) => a + b, 0);
-    expect(stats.totalExpectedCustomers).toBeGreaterThan(0);
-    expect(Math.abs(totalDemand - stats.totalExpectedCustomers)).toBeLessThanOrEqual(6);
-  });
-
-  it('calculateExpectedStats maxIntensity应为曲线中的最大强度', () => {
-    Math.random = seededRandom(1002);
-    const curve = STRATEGY_TEMPLATES.rushHour.generateCurve(30, ["snack", "drink", "noodle"]);
-    const level = { customerBaseGap: 3 };
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], level);
-    const expectedMax = Math.max(...curve.map(s => s.intensity));
-    expect(stats.maxIntensity).toBeCloseTo(expectedMax, 6);
-  });
-
-  it('calculateExpectedStats pressureTicks统计intensity>=1.3的tick数', () => {
-    const mockCurve = [
-      { tick: 0, intensity: 0.5, goodWeights: { snack: 1, drink: 1, noodle: 1 } },
-      { tick: 1, intensity: 1.3, goodWeights: { snack: 1, drink: 1, noodle: 1 } },
-      { tick: 2, intensity: 1.5, goodWeights: { snack: 1, drink: 1, noodle: 1 } },
-      { tick: 3, intensity: 1.29, goodWeights: { snack: 1, drink: 1, noodle: 1 } }
-    ];
-    const level = { customerBaseGap: 1 };
-    const stats = calculateExpectedStats(mockCurve, ["snack", "drink", "noodle"], level);
-    expect(stats.pressureTicks).toBe(2);
-  });
-
-  it('generatePreviewData 应生成20个curveBars', () => {
-    Math.random = seededRandom(1100);
-    const curve = STRATEGY_TEMPLATES.steady.generateCurve(50, ["snack", "drink", "noodle"]);
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], { customerBaseGap: 3 });
-    const preview = generatePreviewData(curve, stats, ["snack", "drink", "noodle"], STRATEGY_TEMPLATES.steady);
-    expect(preview.curveBars).toHaveLength(20);
-  });
-
-  it('generatePreviewData curveBars的level应在1~6之间', () => {
-    Math.random = seededRandom(1101);
-    const curve = STRATEGY_TEMPLATES.rushHour.generateCurve(40, ["snack", "drink", "noodle"]);
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], { customerBaseGap: 3 });
-    const preview = generatePreviewData(curve, stats, ["snack", "drink", "noodle"], STRATEGY_TEMPLATES.rushHour);
-    preview.curveBars.forEach(bar => {
-      expect(bar.level).toBeGreaterThanOrEqual(1);
-      expect(bar.level).toBeLessThanOrEqual(6);
+      it("所有策略生成的曲线都包含真实商品权重", () => {
+        const goodKeys = api.getCurrentLevelGoodKeys();
+        Object.values(api.STRATEGY_TEMPLATES).forEach((strategy, index) => {
+          const curve = withSeed(400 + index, () => strategy.generateCurve(10, goodKeys));
+          expect(curve).toHaveLength(10);
+          curve.forEach(segment => {
+            expect(segment.intensity).toBeGreaterThanOrEqual(0.4);
+            goodKeys.forEach(key => expect(segment.goodWeights[key]).toBeDefined());
+          });
+        });
+      });
     });
-  });
 
-  it('generatePreviewData goodDemandList 每个商品ratio之和约为1', () => {
-    const curve = [
-      { tick: 0, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.35, noodle: 0.25 } },
-      { tick: 1, intensity: 1.5, goodWeights: { snack: 0.4, drink: 0.35, noodle: 0.25 } },
-      { tick: 2, intensity: 1.0, goodWeights: { snack: 0.4, drink: 0.35, noodle: 0.25 } }
-    ];
-    const stats = calculateExpectedStats(curve, ["snack", "drink", "noodle"], { customerBaseGap: 1 });
-    const preview = generatePreviewData(curve, stats, ["snack", "drink", "noodle"], STRATEGY_TEMPLATES.steady);
-    expect(stats.totalExpectedCustomers).toBeGreaterThan(0);
-    const ratioSum = preview.goodDemandList.reduce((s, g) => s + g.ratio, 0);
-    expect(ratioSum).toBeCloseTo(1.0, 3);
-  });
+    describe("预期统计计算", () => {
+      it("固定输入下预期统计结果稳定且可重复", () => {
+        const curve = [
+          { tick: 0, intensity: 1.0, goodWeights: { snack: 2, drink: 1, noodle: 1 } },
+          { tick: 1, intensity: 1.5, goodWeights: { snack: 1, drink: 2, noodle: 1 } },
+          { tick: 2, intensity: 0.5, goodWeights: { snack: 1, drink: 1, noodle: 2 } }
+        ];
+        const level = { customerBaseGap: 1 };
+        const first = api.calculateExpectedStats(curve, ["snack", "drink", "noodle"], level);
+        const second = api.calculateExpectedStats(curve, ["snack", "drink", "noodle"], level);
+        expect(first).toEqual(second);
+        expect(first.totalExpectedCustomers).toBe(4);
+        expect(first.pressureTicks).toBe(1);
+        expect(first.curveLength).toBe(3);
+      });
 
-});
-
-describe('实际经营数据记录', () => {
-
-  function setupActualStats() {
-    resetSchedulingState();
-    const origRandom = Math.random;
-    Math.random = seededRandom(2000);
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = "steady";
-    schedulingState.generatedCurve = STRATEGY_TEMPLATES.steady.generateCurve(10, ["snack", "drink", "noodle"]);
-    initActualStats(["snack", "drink", "noodle"]);
-    Math.random = origRandom;
-  }
-
-  it('recordActualCustomer 服务成功应增加totalServed', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 0, true, "normal", false);
-    expect(schedulingState.actualStats.totalServed).toBe(1);
-    expect(schedulingState.actualStats.totalMissed).toBe(0);
-  });
-
-  it('recordActualCustomer 服务失败应增加totalMissed', () => {
-    setupActualStats();
-    recordActualCustomer("drink", 1, false, "worker", false);
-    expect(schedulingState.actualStats.totalServed).toBe(0);
-    expect(schedulingState.actualStats.totalMissed).toBe(1);
-  });
-
-  it('recordActualCustomer 应正确累加各商品需求', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 0, true, "normal", false);
-    recordActualCustomer("snack", 1, false, "normal", false);
-    recordActualCustomer("drink", 2, true, "normal", false);
-    expect(schedulingState.actualStats.demandByGood.snack).toBe(2);
-    expect(schedulingState.actualStats.demandByGood.drink).toBe(1);
-    expect(schedulingState.actualStats.demandByGood.noodle).toBe(0);
-  });
-
-  it('recordActualCustomer 应按tickIndex记录customersByTick', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 2, true, "normal", false);
-    recordActualCustomer("snack", 2, true, "normal", false);
-    recordActualCustomer("drink", 5, true, "normal", false);
-    expect(schedulingState.actualStats.customersByTick[2]).toBe(2);
-    expect(schedulingState.actualStats.customersByTick[5]).toBe(1);
-    expect(schedulingState.actualStats.customersByTick[0]).toBe(0);
-  });
-
-  it('recordActualCustomer tickIndex越界应限制在有效范围', () => {
-    setupActualStats();
-    recordActualCustomer("snack", -5, true, "normal", false);
-    recordActualCustomer("snack", 9999, true, "normal", false);
-    expect(schedulingState.actualStats.customersByTick[0]).toBe(1);
-    expect(schedulingState.actualStats.customersByTick[9]).toBe(1);
-  });
-
-  it('recordActualCustomer 替代服务应统计substituteServed', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 0, true, "normal", true);
-    recordActualCustomer("drink", 1, true, "worker", true);
-    expect(schedulingState.actualStats.substituteServed).toBe(2);
-    expect(schedulingState.actualStats.totalServed).toBe(2);
-  });
-
-  it('recordActualCustomer 按顾客类型分别统计servedByType', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 0, true, "normal", false);
-    recordActualCustomer("drink", 1, true, "worker", false);
-    recordActualCustomer("noodle", 2, true, "normal", false);
-    expect(schedulingState.actualStats.servedByType.normal).toBe(2);
-    expect(schedulingState.actualStats.servedByType.worker).toBe(1);
-  });
-
-  it('recordActualCustomer 按顾客类型分别统计missedByType', () => {
-    setupActualStats();
-    recordActualCustomer("snack", 0, false, "picky", false);
-    recordActualCustomer("drink", 1, false, "picky", false);
-    recordActualCustomer("noodle", 2, false, "nighter", false);
-    expect(schedulingState.actualStats.missedByType.picky).toBe(2);
-    expect(schedulingState.actualStats.missedByType.nighter).toBe(1);
-  });
-
-  it('schedulingState非active时recordActualCustomer应无操作', () => {
-    setupActualStats();
-    schedulingState.active = false;
-    recordActualCustomer("snack", 0, true, "normal", false);
-    expect(schedulingState.actualStats.totalServed).toBe(0);
-  });
-
-  it('getCurveSegmentForTick 应返回正确的曲线段', () => {
-    setupActualStats();
-    const seg = getCurveSegmentForTick(3);
-    expect(seg).toBeDefined();
-    expect(seg.tick).toBe(3);
-    expect(seg.intensity).toBeGreaterThan(0);
-  });
-
-  it('getCurveSegmentForTick 边界索引应被限制', () => {
-    setupActualStats();
-    const seg0 = getCurveSegmentForTick(-1);
-    const seg9 = getCurveSegmentForTick(100);
-    expect(seg0.tick).toBe(0);
-    expect(seg9.tick).toBe(9);
-  });
-
-});
-
-describe('排班奖励结算', () => {
-
-  function setupBonus() {
-    resetSchedulingState();
-  }
-
-  it('无策略时奖励为0', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = null;
-    expect(calculateSchedulingBonus(90, 0)).toBe(0);
-  });
-
-  it('简单策略：服务率85%+零流失 = 50分奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    const bonus = calculateSchedulingBonus(90, 0);
-    expect(bonus).toBe(30 * 1 + 20 * 1);
-  });
-
-  it('简单策略：服务率70%+流失2人 = 25分奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    const bonus = calculateSchedulingBonus(75, 2);
-    expect(bonus).toBe(15 * 1 + 10 * 1);
-  });
-
-  it('中等策略：奖励应乘以difficultyLevel=2', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "rushHour";
-    const bonus = calculateSchedulingBonus(90, 0);
-    expect(bonus).toBe(30 * 2 + 20 * 2);
-  });
-
-  it('困难策略：奖励应乘以difficultyLevel=3', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "randomBurst";
-    const bonus = calculateSchedulingBonus(85, 1);
-    expect(bonus).toBe(30 * 3 + 10 * 3);
-  });
-
-  it('服务率低于70%且流失超过2人：无奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    const bonus = calculateSchedulingBonus(50, 10);
-    expect(bonus).toBe(0);
-  });
-
-  it('边界：服务率正好85%应获得高服务奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    expect(calculateSchedulingBonus(85, 5)).toBeGreaterThan(0);
-  });
-
-  it('边界：服务率正好70%应获得基础服务奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    expect(calculateSchedulingBonus(70, 5)).toBeGreaterThan(0);
-  });
-
-  it('边界：流失正好2人应获得低流失奖励', () => {
-    setupBonus();
-    schedulingState.selectedStrategy = "steady";
-    expect(calculateSchedulingBonus(60, 2)).toBeGreaterThan(0);
-  });
-
-});
-
-describe('关键分支逻辑', () => {
-
-  function setupBranch() {
-    resetSchedulingState();
-  }
-
-  it('跳过排班分支：skip后所有状态应重置为初始值', () => {
-    setupBranch();
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = "steady";
-    schedulingState.generatedCurve = [{}, {}];
-    schedulingState.expectedStats = { some: "data" };
-
-    schedulingState.active = false;
-    schedulingState.selectedStrategy = null;
-    schedulingState.generatedCurve = null;
-    schedulingState.previewData = null;
-    schedulingState.expectedStats = null;
-
-    expect(schedulingState.active).toBe(false);
-    expect(schedulingState.selectedStrategy).toBeNull();
-    expect(schedulingState.generatedCurve).toBeNull();
-    expect(schedulingState.expectedStats).toBeNull();
-  });
-
-  it('选择策略分支：selectStrategy后应生成曲线和预期统计', () => {
-    setupBranch();
-    const origRandom = Math.random;
-    Math.random = seededRandom(3000);
-    const strategyId = "rushHour";
-    const goodKeys = ["snack", "drink", "noodle"];
-    const level = { duration: 120, customerBaseGap: 1 };
-    const totalTicks = Math.ceil(level.duration / 5);
-
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = strategyId;
-    const strategy = STRATEGY_TEMPLATES[strategyId];
-    const curve = strategy.generateCurve(totalTicks, goodKeys);
-    schedulingState.generatedCurve = curve;
-    const expectedStats = calculateExpectedStats(curve, goodKeys, level);
-    schedulingState.expectedStats = expectedStats;
-    Math.random = origRandom;
-
-    expect(schedulingState.active).toBe(true);
-    expect(schedulingState.selectedStrategy).toBe("rushHour");
-    expect(schedulingState.generatedCurve).toHaveLength(totalTicks);
-    expect(schedulingState.expectedStats.totalExpectedCustomers).toBeGreaterThan(0);
-    expect(schedulingState.expectedStats.overallRisk).toBeDefined();
-  });
-
-  it('不同策略应产出不同的预期统计特征', () => {
-    setupBranch();
-    const origRandom = Math.random;
-    Math.random = seededRandom(3100);
-    const goodKeys = ["snack", "drink", "noodle"];
-    const level = { duration: 120, customerBaseGap: 1 };
-    const totalTicks = Math.ceil(level.duration / 5);
-
-    const steadyCurve = STRATEGY_TEMPLATES.steady.generateCurve(totalTicks, goodKeys);
-    const rushCurve = STRATEGY_TEMPLATES.rushHour.generateCurve(totalTicks, goodKeys);
-    const steadyStats = calculateExpectedStats(steadyCurve, goodKeys, level);
-    const rushStats = calculateExpectedStats(rushCurve, goodKeys, level);
-    Math.random = origRandom;
-
-    expect(rushStats.maxIntensity).toBeGreaterThan(steadyStats.maxIntensity);
-  });
-
-  it('训练模式强制策略分支：应使用指定forceStrategy', () => {
-    setupBranch();
-    const theme = TRAINING_THEMES.scheduling;
-    expect(theme.config.forceStrategy).toBe("rushHour");
-    expect(theme.config.showPreview).toBe(true);
-
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = null;
-
-    const forcedStrategy = theme.config.forceStrategy;
-    schedulingState.selectedStrategy = forcedStrategy;
-
-    expect(schedulingState.selectedStrategy).toBe("rushHour");
-    expect(STRATEGY_TEMPLATES[forcedStrategy]).toBeDefined();
-  });
-
-  it('训练模式：强制策略generateCurve应正常工作', () => {
-    setupBranch();
-    const origRandom = Math.random;
-    Math.random = seededRandom(3200);
-    const forcedStrategy = TRAINING_THEMES.scheduling.config.forceStrategy;
-    const strategy = STRATEGY_TEMPLATES[forcedStrategy];
-    const curve = strategy.generateCurve(20, ["snack", "drink", "noodle"]);
-    Math.random = origRandom;
-    expect(curve).toHaveLength(20);
-    curve.forEach(seg => {
-      expect(seg.intensity).toBeGreaterThan(0);
+      it("选择真实策略后生成预期统计和预览数据", () => {
+        resetApp();
+        withSeed(500, () => api.selectStrategy("rushHour"));
+        expect(api.schedulingState.active).toBeTruthy();
+        expect(api.schedulingState.selectedStrategy).toBe("rushHour");
+        expect(api.schedulingState.generatedCurve.length).toBe(Math.ceil(api.getCurrentLevel().duration / 5));
+        expect(api.schedulingState.expectedStats.totalExpectedCustomers).toBeGreaterThan(0);
+        expect(api.schedulingState.previewData.curveBars).toHaveLength(20);
+      });
     });
-  });
 
-  it('返回策略选择分支：应清除已选策略和生成数据', () => {
-    setupBranch();
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = "steady";
-    schedulingState.generatedCurve = [{}];
-    schedulingState.expectedStats = { a: 1 };
-    schedulingState.previewData = { b: 2 };
+    describe("实际经营数据记录", () => {
+      it("startWithSchedulingStrategy 使用真实分支初始化 actualStats", () => {
+        resetApp();
+        withSeed(600, () => api.selectStrategy("steady"));
+        api.startWithSchedulingStrategy();
+        api.stopTimer();
+        expect(api.schedulingState.actualStats.customersByTick).toHaveLength(api.schedulingState.generatedCurve.length);
+        expect(api.schedulingState.actualStats.demandByGood.snack).toBe(0);
+        expect(api.schedulingState.actualStats.totalServed).toBe(0);
+        expect(api.state.running).toBeTruthy();
+      });
 
-    schedulingState.active = false;
-    schedulingState.selectedStrategy = null;
-    schedulingState.generatedCurve = null;
-    schedulingState.previewData = null;
-    schedulingState.expectedStats = null;
+      it("recordActualCustomer 记录服务、流失、商品、顾客类型和替代服务", () => {
+        resetApp();
+        withSeed(601, () => api.selectStrategy("steady"));
+        api.startWithSchedulingStrategy();
+        api.stopTimer();
+        api.recordActualCustomer("snack", 2, true, "normal", false);
+        api.recordActualCustomer("drink", 2, false, "worker", false);
+        api.recordActualCustomer("noodle", 99, true, "picky", true);
+        const actual = api.schedulingState.actualStats;
+        expect(actual.totalServed).toBe(2);
+        expect(actual.totalMissed).toBe(1);
+        expect(actual.demandByGood.snack).toBe(1);
+        expect(actual.demandByGood.drink).toBe(1);
+        expect(actual.demandByGood.noodle).toBe(1);
+        expect(actual.customersByTick[2]).toBe(2);
+        expect(actual.customersByTick[actual.customersByTick.length - 1]).toBe(1);
+        expect(actual.servedByType.normal).toBe(1);
+        expect(actual.missedByType.worker).toBe(1);
+        expect(actual.substituteServed).toBe(1);
+      });
+    });
 
-    expect(schedulingState.selectedStrategy).toBeNull();
-    expect(schedulingState.generatedCurve).toBeNull();
-    expect(schedulingState.expectedStats).toBeNull();
-  });
+    describe("排班奖励结算", () => {
+      it("奖励按真实选中策略和难度倍率结算", () => {
+        resetApp();
+        api.selectStrategy("steady");
+        expect(api.calculateSchedulingBonus(90, 0)).toBe(50);
+        api.selectStrategy("rushHour");
+        expect(api.calculateSchedulingBonus(90, 0)).toBe(100);
+        api.selectStrategy("randomBurst");
+        expect(api.calculateSchedulingBonus(85, 1)).toBe(120);
+      });
 
-  it('startWithSchedulingStrategy分支：应正确初始化actualStats', () => {
-    setupBranch();
-    const origRandom = Math.random;
-    Math.random = seededRandom(3300);
-    schedulingState.active = true;
-    schedulingState.selectedStrategy = "steady";
-    const goodKeys = ["snack", "drink", "noodle"];
-    schedulingState.generatedCurve = STRATEGY_TEMPLATES.steady.generateCurve(10, goodKeys);
+      it("无策略或低服务率高流失时不发奖励", () => {
+        resetApp();
+        expect(api.calculateSchedulingBonus(90, 0)).toBe(0);
+        api.selectStrategy("steady");
+        expect(api.calculateSchedulingBonus(50, 10)).toBe(0);
+      });
+    });
 
-    initActualStats(goodKeys);
-    Math.random = origRandom;
+    describe("关键分支逻辑", () => {
+      it("跳过排班调用真实 skipSchedulingChallenge 并直接开始营业", () => {
+        resetApp();
+        api.openSchedulingChallenge();
+        withSeed(700, () => api.selectStrategy("steady"));
+        api.skipSchedulingChallenge();
+        api.stopTimer();
+        expect(api.schedulingState.active).toBe(false);
+        expect(api.schedulingState.selectedStrategy).toBeNull();
+        expect(api.schedulingState.generatedCurve).toBeNull();
+        expect(api.state.running).toBeTruthy();
+      });
 
-    expect(schedulingState.actualStats.customersByTick).toHaveLength(10);
-    expect(schedulingState.actualStats.customersByTick.every(v => v === 0)).toBe(true);
-    expect(schedulingState.actualStats.demandByGood.snack).toBe(0);
-    expect(schedulingState.actualStats.demandByGood.drink).toBe(0);
-    expect(schedulingState.actualStats.totalServed).toBe(0);
-    expect(schedulingState.actualStats.totalMissed).toBe(0);
-  });
+      it("训练模式强制策略调用真实 openSchedulingForTraining 并隐藏跳过按钮", async () => {
+        resetApp();
+        withSeed(701, () => api.startSchedulingTrainingPreviewForTest());
+        await wait(80);
+        expect(api.training.active).toBeTruthy();
+        expect(api.TRAINING_THEMES.scheduling.config.forceStrategy).toBe("rushHour");
+        expect(api.schedulingState.selectedStrategy).toBe("rushHour");
+        expect(api.schedulingState.generatedCurve.length).toBeGreaterThan(0);
+        expect(api.schedulingState.previewData.curveBars).toHaveLength(20);
+        const skipHidden = appWindow.document.getElementById("schedulingSkipBtn").classList.contains("hidden");
+        expect(skipHidden).toBeTruthy();
+      });
+    });
 
-});
-
-// ============================================================
-// 测试执行与渲染
-// ============================================================
-
-function runAllTests() {
-  logLines = [];
-  const resultsEl = document.getElementById('testResults');
-  resultsEl.innerHTML = '';
-  log('开始运行测试...');
-
-  let totalPass = 0, totalFail = 0, totalCount = 0;
-
-  testResults.forEach(suite => {
-    const suiteEl = document.createElement('div');
-    suiteEl.className = 'test-suite';
-
-    let suitePass = 0, suiteFail = 0;
-    const testListEl = document.createElement('div');
-    testListEl.className = 'test-list';
-
-    suite.tests.forEach(test => {
-      totalCount++;
-      const testEl = document.createElement('div');
-      testEl.className = 'test-item';
-      const startTime = performance.now();
-
+    async function runAllTests() {
+      const runBtn = document.getElementById("runBtn");
+      runBtn.disabled = true;
+      logLines = [];
+      document.getElementById("results").innerHTML = "";
+      document.getElementById("log").textContent = "加载真实页面...\n";
       try {
-        if (suite.beforeEach) suite.beforeEach();
-        test.fn();
-        if (suite.afterEach) suite.afterEach();
-        const duration = (performance.now() - startTime).toFixed(1);
-        suitePass++; totalPass++;
-        testEl.classList.add('pass');
-        testEl.innerHTML = `
-          <span class="test-icon pass">✓</span>
-          <span class="test-name">${test.name}</span>
-          <span class="test-duration">${duration}ms</span>
-        `;
-        log(`  ✓ ${test.name}`);
-      } catch (e) {
-        const duration = (performance.now() - startTime).toFixed(1);
-        suiteFail++; totalFail++;
-        testEl.classList.add('fail');
-        testEl.innerHTML = `
-          <span class="test-icon fail">✗</span>
-          <div class="test-name">
-            ${test.name}
-            <div class="error-details">${e.message}</div>
-          </div>
-          <span class="test-duration">${duration}ms</span>
-        `;
-        log(`  ✗ ${test.name}: ${e.message}`);
+        await loadAppFrame();
+      } catch (error) {
+        document.getElementById("log").textContent = error.message;
+        runBtn.disabled = false;
+        return;
       }
-      testListEl.appendChild(testEl);
-    });
 
-    const badgeClass = suiteFail === 0 ? 'pass' : 'fail';
-    const badgeText = suiteFail === 0 ? `${suitePass} 通过` : `${suitePass} 通过 / ${suiteFail} 失败`;
-    const headerEl = document.createElement('div');
-    headerEl.className = 'suite-header';
-    headerEl.innerHTML = `
-      <span>📁 ${suite.name}</span>
-      <span class="badge ${badgeClass}">${badgeText}</span>
-    `;
+      let total = 0;
+      let pass = 0;
+      let fail = 0;
+      const results = document.getElementById("results");
 
-    suiteEl.appendChild(headerEl);
-    suiteEl.appendChild(testListEl);
-    resultsEl.appendChild(suiteEl);
-  });
+      for (const suite of suites) {
+        const suiteEl = document.createElement("section");
+        suiteEl.className = "suite";
+        const listEl = document.createElement("div");
+        let suitePass = 0;
+        let suiteFail = 0;
 
-  document.getElementById('totalCount').textContent = totalCount;
-  document.getElementById('passCount').textContent = totalPass;
-  document.getElementById('failCount').textContent = totalFail;
+        for (const test of suite.tests) {
+          total += 1;
+          const item = document.createElement("div");
+          const start = performance.now();
+          try {
+            resetApp();
+            await test.fn();
+            api.stopTimer();
+            const duration = (performance.now() - start).toFixed(1);
+            pass += 1;
+            suitePass += 1;
+            item.className = "case pass";
+            item.innerHTML = `<span class="mark">✓</span><span class="case-name">${test.name}</span><span class="duration">${duration}ms</span>`;
+            logLines.push(`✓ ${suite.name} / ${test.name}`);
+          } catch (error) {
+            api && api.stopTimer();
+            const duration = (performance.now() - start).toFixed(1);
+            fail += 1;
+            suiteFail += 1;
+            item.className = "case fail";
+            item.innerHTML = `<span class="mark">✗</span><div class="case-name">${test.name}<div class="error">${error.stack || error.message}</div></div><span class="duration">${duration}ms</span>`;
+            logLines.push(`✗ ${suite.name} / ${test.name}: ${error.message}`);
+          }
+          listEl.appendChild(item);
+        }
 
-  const failPlural = totalFail === 0 || totalFail > 1 ? 's' : '';
-  log(`完成：${totalPass} 通过，${totalFail} 失败，共 ${totalCount} 个测试用例`);
+        const header = document.createElement("div");
+        header.className = "suite-header";
+        header.innerHTML = `<span>${suite.name}</span><span class="badge ${suiteFail ? "fail" : "pass"}">${suitePass} 通过${suiteFail ? ` / ${suiteFail} 失败` : ""}</span>`;
+        suiteEl.appendChild(header);
+        suiteEl.appendChild(listEl);
+        results.appendChild(suiteEl);
+      }
 
-  document.getElementById('logContent').textContent = logLines.join('\n');
-}
+      document.getElementById("totalCount").textContent = total;
+      document.getElementById("passCount").textContent = pass;
+      document.getElementById("failCount").textContent = fail;
+      logLines.push(`完成：${pass} 通过，${fail} 失败，共 ${total} 个测试用例`);
+      document.getElementById("log").textContent = logLines.join("\n");
+      runBtn.disabled = false;
+    }
 
-window.onload = () => {
-  runAllTests();
-};
-</script>
+    document.getElementById("runBtn").addEventListener("click", runAllTests);
+    window.addEventListener("load", runAllTests);
+  </script>
 </body>
 </html>

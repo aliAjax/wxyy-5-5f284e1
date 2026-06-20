@@ -4403,7 +4403,7 @@ const TRAINING_THEMES = {
     ],
     config: {
       showPreview: true,
-      forceStrategy: "peakFocused",
+      forceStrategy: "rushHour",
       durationMultiplier: 1.0
     }
   },
@@ -8060,6 +8060,7 @@ function renderStrategyCards() {
     const isSelected = schedulingState.selectedStrategy === strategy.id;
     const card = document.createElement("div");
     card.className = `strategy-card ${isSelected ? "selected" : ""}`;
+    card.dataset.id = strategy.id;
     card.innerHTML = `
       <div class="strategy-card-header">
         <div class="strategy-icon">${strategy.icon}</div>
@@ -8098,6 +8099,11 @@ function selectStrategy(strategyId) {
   schedulingBackBtn.classList.remove("hidden");
   schedulingStartBtn.classList.remove("hidden");
   schedulingSkipBtn.classList.add("hidden");
+}
+
+function generatePreviewForStrategy() {
+  if (!schedulingState.selectedStrategy) return;
+  selectStrategy(schedulingState.selectedStrategy);
 }
 
 function calculateExpectedStats(curve, goodKeys, level) {
@@ -8474,7 +8480,7 @@ function startTrainingSession() {
 }
 
 function openSchedulingForTraining() {
-  const strategy = TRAINING_THEMES[training.themeId]?.config?.forceStrategy || "peakFocused";
+  const strategy = TRAINING_THEMES[training.themeId]?.config?.forceStrategy || "rushHour";
   schedulingState.active = true;
   schedulingState.selectedStrategy = null;
   schedulingState.generatedCurve = null;
@@ -8500,6 +8506,73 @@ function openSchedulingForTraining() {
     }
   }, 50);
 }
+
+window.__schedulingTestApi = {
+  goods,
+  customerTypes,
+  levels,
+  STRATEGY_TEMPLATES,
+  TRAINING_THEMES,
+  get state() {
+    return state;
+  },
+  get schedulingState() {
+    return schedulingState;
+  },
+  get training() {
+    return training;
+  },
+  stopTimer() {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  },
+  resetForTest() {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    training.active = false;
+    training.themeId = null;
+    training.selectedThemeId = null;
+    training.originalLevelId = null;
+    currentLevelId = 1;
+    state = freshState(false);
+    schedulingState.active = false;
+    schedulingState.selectedStrategy = null;
+    schedulingState.generatedCurve = null;
+    schedulingState.previewData = null;
+    schedulingState.expectedStats = null;
+    schedulingState.actualStats = {
+      customersByTick: [],
+      demandByGood: {},
+      totalServed: 0,
+      totalMissed: 0
+    };
+    schedulingOverlay.classList.add("hidden");
+    render();
+  },
+  openSchedulingChallenge,
+  skipSchedulingChallenge,
+  selectStrategy,
+  generatePreviewForStrategy,
+  startWithSchedulingStrategy,
+  openSchedulingForTraining,
+  calculateExpectedStats,
+  generatePreviewData,
+  calculateSchedulingBonus,
+  recordActualCustomer,
+  getCurveSegmentForTick,
+  getCurrentLevel,
+  getCurrentLevelGoodKeys,
+  startSchedulingTrainingPreviewForTest() {
+    this.resetForTest();
+    training.active = true;
+    training.themeId = "scheduling";
+    openSchedulingForTraining();
+  }
+};
 
 function startGameWithTrainingConfig() {
   const theme = TRAINING_THEMES[training.themeId];
