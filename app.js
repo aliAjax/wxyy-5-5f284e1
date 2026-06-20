@@ -1912,8 +1912,12 @@ function renderWeekArchiveBody() {
   const totalSales = allCompleted.reduce((sum, n) => sum + n.sales, 0);
   const totalMisses = allCompleted.reduce((sum, n) => sum + n.misses, 0);
   const totalServed = allCompleted.reduce((sum, n) => sum + n.served, 0);
+  const totalScore = allCompleted.reduce((sum, n) => sum + (n.finalScore || 0), 0);
   const avgServiceRate = allCompleted.length > 0
     ? Math.round(allCompleted.reduce((sum, n) => sum + n.serviceRate, 0) / allCompleted.length)
+    : 0;
+  const avgScore = allCompleted.length > 0
+    ? Math.round(totalScore / allCompleted.length)
     : 0;
 
   if (weekArchiveSubtitleEl) {
@@ -1942,6 +1946,14 @@ function renderWeekArchiveBody() {
         <div class="week-summary-card">
           <div class="week-summary-value">${totalMisses}</div>
           <div class="week-summary-label">累计缺货</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${totalScore}</div>
+          <div class="week-summary-label">总评分</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${avgScore}</div>
+          <div class="week-summary-label">平均每晚评分</div>
         </div>
       </div>
     `;
@@ -1975,10 +1987,19 @@ function renderWeekArchiveBody() {
               <div class="night-archive-stat-value">${record.misses}</div>
               <div class="night-archive-stat-label">缺货次数</div>
             </div>
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">${record.served}</div>
+              <div class="night-archive-stat-label">服务顾客</div>
+            </div>
+            <div class="night-archive-stat">
+              <div class="night-archive-stat-value">${record.energy}</div>
+              <div class="night-archive-stat-label">剩余体力</div>
+            </div>
           </div>
           <div class="night-archive-detail">
             <strong>目标达成：</strong>${goalsSummary}<br>
             ${record.strategyName ? `<strong>排班策略：</strong>${record.strategyName}<br>` : ''}
+            ${record.energy !== undefined ? `<strong>剩余体力：</strong>${record.energy} 点<br>` : ''}
           </div>
           <div class="night-archive-events">
             <strong>经营事件：</strong>${eventsSummary}
@@ -2055,9 +2076,10 @@ function generateWeeklyReport() {
   const totalMisses = completed.reduce((sum, n) => sum + n.misses, 0);
   const totalServed = completed.reduce((sum, n) => sum + n.served, 0);
   const avgServiceRate = Math.round(completed.reduce((sum, n) => sum + n.serviceRate, 0) / completed.length);
-  const totalScore = completed.reduce((sum, n) => sum + n.finalScore, 0);
+  const totalScore = completed.reduce((sum, n) => sum + (n.finalScore || 0), 0);
+  const avgScore = Math.round(totalScore / completed.length);
 
-  const nightRankByScore = [...completed].sort((a, b) => b.finalScore - a.finalScore);
+  const nightRankByScore = [...completed].sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
   const nightRankByMiss = [...completed].sort((a, b) => a.misses - b.misses);
 
   let grade, gradeTitle, gradeDesc;
@@ -2084,6 +2106,7 @@ function generateWeeklyReport() {
     totalServed,
     avgServiceRate,
     totalScore,
+    avgScore,
     completedCount: completed.length,
     nightRankByScore,
     nightRankByMiss,
@@ -2131,6 +2154,14 @@ function openWeeklyReport() {
         <div class="week-summary-card">
           <div class="week-summary-value">${report.totalMisses}</div>
           <div class="week-summary-label">累计缺货次数</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${report.totalScore}</div>
+          <div class="week-summary-label">总评分</div>
+        </div>
+        <div class="week-summary-card">
+          <div class="week-summary-value">${report.avgScore}</div>
+          <div class="week-summary-label">平均每晚评分</div>
         </div>
       </div>
     </div>
@@ -6678,9 +6709,30 @@ function finish(reason) {
   }
 
   const currentLvl = getCurrentLevel();
+  const goodsStats = {};
+  const goodKeys = getCurrentLevelGoodKeys();
+  goodKeys.forEach(key => {
+    const good = goods[key];
+    goodsStats[key] = {
+      name: good.name,
+      icon: good.icon,
+      sales: state.sessionSalesCount[key] || 0,
+      misses: state.sessionMissCount[key] || 0
+    };
+  });
+  const shelfStats = {};
+  state.shelves.forEach(shelf => {
+    const good = goods[shelf.good];
+    shelfStats[shelf.id] = {
+      goodName: good.name,
+      goodIcon: good.icon,
+      misses: state.sessionShelfMissCount[shelf.id] || 0
+    };
+  });
   const nightData = {
     levelId: currentLevelId,
     levelName: currentLvl.name,
+    levelIcon: currentLvl.icon || '🏪',
     strategyId: schedulingState.selectedStrategy || null,
     strategyName: schedulingState.selectedStrategy ? STRATEGY_TEMPLATES[schedulingState.selectedStrategy].name : null,
     sales: state.sales,
@@ -6688,13 +6740,16 @@ function finish(reason) {
     serviceRate: serviceRate,
     served: served,
     missed: missed,
-    score: totalFinalScore,
+    finalScore: totalFinalScore,
+    energy: state.energy,
     goals: state.goals.map(g => ({
   title: g.title,
   completed: g.completed,
   reward: g.reward
 })),
-    events: eventHistory.slice()
+    events: eventHistory.slice(),
+    goodsStats: goodsStats,
+    shelfStats: shelfStats
   };
   const isWeekComplete = recordNightResult(nightData);
 
