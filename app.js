@@ -2015,6 +2015,12 @@ function createEmptyNightRecord() {
   };
 }
 
+function getCustomerTypeFromSubstituteKey(key) {
+  if (key.startsWith('sub_')) return key.substring(4);
+  if (key.startsWith('substitute_')) return key.substring(11);
+  return key;
+}
+
 function renderWeekProgress() {
   if (weekNumberEl) weekNumberEl.textContent = weekState.weekNumber;
   if (nightNumberEl) nightNumberEl.textContent = weekState.currentNight;
@@ -2062,7 +2068,7 @@ function renderWeekArchiveBody() {
       totalServedByType[type] = (totalServedByType[type] || 0) + count;
     });
     Object.entries(n.substituteServedByType || {}).forEach(([key, count]) => {
-      const type = key.replace('substitute_', '');
+      const type = getCustomerTypeFromSubstituteKey(key);
       totalSubstituteByType[type] = (totalSubstituteByType[type] || 0) + count;
     });
   });
@@ -2075,8 +2081,15 @@ function renderWeekArchiveBody() {
     : 0;
 
   let customerTypeSummary = '';
-  if (Object.keys(totalServedByType).length > 0) {
-    const sortedTypes = Object.entries(totalServedByType)
+  const typeTotals = {};
+  Object.entries(totalServedByType).forEach(([type, count]) => {
+    typeTotals[type] = (typeTotals[type] || 0) + count;
+  });
+  Object.entries(totalSubstituteByType).forEach(([type, count]) => {
+    typeTotals[type] = (typeTotals[type] || 0) + count;
+  });
+  if (Object.keys(typeTotals).length > 0) {
+    const sortedTypes = Object.entries(typeTotals)
       .filter(([type]) => customerTypes[type])
       .sort((a, b) => b[1] - a[1]);
     customerTypeSummary = sortedTypes.map(([type, count]) => {
@@ -2293,7 +2306,7 @@ function generateWeeklyReport() {
       totalMissedByType[type] = (totalMissedByType[type] || 0) + count;
     });
     Object.entries(n.substituteServedByType || {}).forEach(([key, count]) => {
-      const type = key.replace('substitute_', '');
+      const type = getCustomerTypeFromSubstituteKey(key);
       totalSubstituteByType[type] = (totalSubstituteByType[type] || 0) + count;
     });
     if (n.substituteStats && n.substituteStats.details) {
@@ -2304,13 +2317,19 @@ function generateWeeklyReport() {
   });
 
   const customerTypeAnalysis = [];
-  Object.entries(totalServedByType).forEach(([type, served]) => {
+  const customerTypeKeys = new Set([
+    ...Object.keys(totalServedByType),
+    ...Object.keys(totalMissedByType),
+    ...Object.keys(totalSubstituteByType)
+  ]);
+  customerTypeKeys.forEach(type => {
     if (customerTypes[type]) {
       const ct = customerTypes[type];
+      const served = totalServedByType[type] || 0;
       const missed = totalMissedByType[type] || 0;
       const substitute = totalSubstituteByType[type] || 0;
-      const total = served + missed;
-      const serviceRate = total > 0 ? Math.round((served / total) * 100) : 0;
+      const total = served + missed + substitute;
+      const serviceRate = total > 0 ? Math.round(((served + substitute) / total) * 100) : 0;
       customerTypeAnalysis.push({
         type,
         name: ct.name,
@@ -7531,11 +7550,11 @@ function generateSchedulingComparisonHtml() {
     Object.entries(expected.expectedCustomerTypes).forEach(([type, expectedCount]) => {
       if (customerTypes[type]) {
         const ct = customerTypes[type];
-        const actualCount = (actualByType[type] || 0) + (actual.missedByType?.[type] || 0);
+        const subCount = actual.substituteServedByType?.[`substitute_${type}`] || actual.substituteServedByType?.[`sub_${type}`] || 0;
+        const actualCount = (actualByType[type] || 0) + (actual.missedByType?.[type] || 0) + subCount;
         const diff = actualCount - expectedCount;
         const typeMatch = expectedCount > 0 ? Math.round((1 - Math.abs(diff) / expectedCount) * 100) : (actualCount === 0 ? 100 : 0);
         let typeMatchClass = typeMatch >= 70 ? 'good' : typeMatch >= 50 ? 'ok' : 'bad';
-        const subCount = actual.substituteServedByType?.[`substitute_${type}`] || 0;
         customerTypeRows += `
           <tr>
             <td><span style="color:${ct.color};">${ct.icon} ${ct.name}</span></td>
