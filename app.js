@@ -102,8 +102,8 @@ const levels = [
       id: "distanceFatigue",
       name: "远距补货惩罚",
       icon: "🏃‍♂️",
-      desc: "大卖场面积大，移动距离越远体力消耗越高（每超过3格距离+1体力）",
-      shortDesc: "远距移动体力+1",
+      desc: "大卖场面积大，离仓库越远移动体力消耗越高（距仓库>3格时每3格+1体力）",
+      shortDesc: "远距移动体力+",
       color: "#d46a6a"
     }
   }
@@ -137,12 +137,13 @@ function getSpecialRuleDualEntrance() {
   return false;
 }
 
-function getSpecialRuleDistanceFatigue(fromX, fromY, toX, toY) {
+function getSpecialRuleDistanceFatigue(x, y) {
   const rule = getLevelSpecialRule();
   if (!rule || rule.id !== "distanceFatigue") return 0;
-  const dist = Math.abs(toX - fromX) + Math.abs(toY - fromY);
-  if (dist > 3) return Math.floor((dist - 3));
-  return 0;
+  const level = getCurrentLevel();
+  const dist = Math.abs(x - level.warehousePos.x) + Math.abs(y - level.warehousePos.y);
+  if (dist <= 3) return 0;
+  return Math.max(1, Math.ceil(dist / 3) - 1);
 }
 
 const boardEl = document.getElementById("board");
@@ -2653,7 +2654,9 @@ function deepCloneStateForReplay(s) {
       waiting: s.customers.waiting.map(c => ({ ...c })),
       nextId: s.customers.nextId,
       servedCount: s.customers.servedCount,
-      missedCount: s.customers.missedCount
+      missedCount: s.customers.missedCount,
+      dualEntranceServedCount: s.customers.dualEntranceServedCount || 0,
+      dualEntranceMissedCount: s.customers.dualEntranceMissedCount || 0
     },
     events: {
       active: s.events.active.map(e => ({ ...e })),
@@ -2804,6 +2807,7 @@ function replayApplyFrame(index) {
     }
   });
 
+  renderRuleIndicator();
   render();
 
   const totalSeconds = replayPlayer.data.frames.length > 0
@@ -2945,6 +2949,10 @@ function replayEnterMode() {
   resultEl.classList.add("hidden");
   normalControls.classList.add("hidden");
 
+  renderLevelName();
+  renderRuleIndicator();
+  renderCrates();
+
   replayApplyFrame(0);
   addLog("🎬 进入回放模式，可播放、暂停、加速或拖动进度条。");
 }
@@ -2953,6 +2961,10 @@ function replayExitMode() {
   if (!replayPlayer.active) return;
 
   replayPausePlayback();
+
+  if (replayPlayer.savedLevelId !== null) {
+    currentLevelId = replayPlayer.savedLevelId;
+  }
 
   if (replayPlayer.savedRealState) {
     const saved = replayPlayer.savedRealState;
@@ -3030,10 +3042,6 @@ function replayExitMode() {
     resultEl.classList.add("hidden");
   }
 
-  if (replayPlayer.savedLevelId !== null) {
-    currentLevelId = replayPlayer.savedLevelId;
-  }
-
   replayPlayer.active = false;
   replayPlayer.data = null;
   replayPlayer.savedRealState = null;
@@ -3043,6 +3051,9 @@ function replayExitMode() {
   replayBanner.classList.add("hidden");
   boardEl.classList.remove("replay-mode");
   normalControls.classList.remove("hidden");
+  renderLevelName();
+  renderRuleIndicator();
+  renderCrates();
   updateEditorUI();
   render();
   addLog("已退出回放模式，回到当前状态。");
@@ -3632,7 +3643,9 @@ function freshState(trainingMode = false) {
       waiting: [],
       nextId: 1,
       servedCount: 0,
-      missedCount: 0
+      missedCount: 0,
+      dualEntranceServedCount: 0,
+      dualEntranceMissedCount: 0
     },
     events: {
       active: [],
@@ -4089,6 +4102,16 @@ function generateNightReportFromReplay(replayData) {
         title: '夜班开始',
         desc: '卷帘门拉起，深夜便利店开始营业'
       });
+
+      const replayLevelRule = level.specialRule || null;
+      if (replayLevelRule) {
+        timelineEvents.push({
+          type: 'rule',
+          tick: tick,
+          title: `${replayLevelRule.icon} ${replayLevelRule.name}`,
+          desc: replayLevelRule.desc
+        });
+      }
     }
 
     const waitingCount = frame.customers ? frame.customers.waiting.length : 0;
@@ -5598,6 +5621,9 @@ function processCustomerQueue() {
     } else {
       state.misses += 1;
       state.customers.missedCount += 1;
+      if (customer._dualEntrance) {
+        state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
+      }
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       const shelf = pickBestShelfForGood(customer.goodKey);
       if (shelf) {
@@ -5640,6 +5666,9 @@ function processCustomerQueue() {
       if (customer.waited >= customer.maxWait) {
         state.misses += 1;
         state.customers.missedCount += 1;
+        if (customer._dualEntrance) {
+          state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
+        }
         state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
         recordActualCustomer(customer.goodKey, currentTick, false);
         const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : null;
@@ -5698,6 +5727,9 @@ function tryServeCustomer(customer) {
     shelf.stock -= 1;
     state.sales += goods[shelf.good].price;
     state.customers.servedCount += 1;
+    if (customer._dualEntrance) {
+      state.customers.dualEntranceServedCount = (state.customers.dualEntranceServedCount || 0) + 1;
+    }
     recordActualCustomer(customer.goodKey, currentTick, true);
     const prevCount = state.salesCount[shelf.good] || 0;
     state.salesCount[shelf.good] = prevCount + 1;
@@ -5758,12 +5790,10 @@ function move(dx, dy) {
   const nextX = Math.max(0, Math.min(level.mapCols - 1, state.player.x + dx));
   const nextY = Math.max(0, Math.min(level.mapRows - 1, state.player.y + dy));
   if (nextX === state.player.x && nextY === state.player.y) return;
-  const prevX = state.player.x;
-  const prevY = state.player.y;
   state.player.x = nextX;
   state.player.y = nextY;
   const baseMoveCost = hasAbility("moveSave") ? 0 : 1;
-  const distFatigue = getSpecialRuleDistanceFatigue(prevX, prevY, nextX, nextY);
+  const distFatigue = getSpecialRuleDistanceFatigue(nextX, nextY);
   spendEnergy(baseMoveCost + distFatigue);
   replayRecordFrame('move');
   render();
@@ -5862,6 +5892,9 @@ function finish(reason) {
     state.customers.waiting.forEach(customer => {
       state.misses += 1;
       state.customers.missedCount += 1;
+      if (customer._dualEntrance) {
+        state.customers.dualEntranceMissedCount = (state.customers.dualEntranceMissedCount || 0) + 1;
+      }
       state.sessionMissCount[customer.goodKey] = (state.sessionMissCount[customer.goodKey] || 0) + 1;
       recordActualCustomer(customer.goodKey, currentTick, false);
       const shelf = customer.targetShelfId ? state.shelves.find(s => s.id === customer.targetShelfId) : pickBestShelfForGood(customer.goodKey);
@@ -6067,6 +6100,7 @@ function finish(reason) {
     state = freshState(false);
     renderCrates();
     renderLevelName();
+    renderRuleIndicator();
     renderClerkBadge();
     render();
     renderGoals();
@@ -6083,10 +6117,16 @@ function finish(reason) {
       const totalServedWithBonus = state.customers.servedCount;
       ruleEffectText = `本关邻里耐心生效，顾客等待上限+2格。共服务 ${totalServedWithBonus} 位顾客，温和的邻里氛围为你争取了更多补货时间。`;
     } else if (specialRule.id === 'dualEntrance') {
-      const dualEntranceCount = (state.customers.waiting.filter(c => c._dualEntrance).length) + (state.customers.servedCount > 0 ? Math.floor(state.customers.servedCount * 0.25) : 0);
-      ruleEffectText = `本关双入口客流生效，第二入口额外涌入约 ${Math.max(1, dualEntranceCount)} 位顾客。客流更大但也带来更多销售机会。`;
+      const dualServed = state.customers.dualEntranceServedCount || 0;
+      const dualMissed = state.customers.dualEntranceMissedCount || 0;
+      const dualTotal = dualServed + dualMissed;
+      if (dualTotal > 0) {
+        ruleEffectText = `本关双入口客流生效，第二入口额外涌入 ${dualTotal} 位顾客（成功服务 ${dualServed} 位，流失 ${dualMissed} 位）。更大的客流带来更多销售机会。`;
+      } else {
+        ruleEffectText = `本关双入口客流生效，两个入口都可能涌入顾客。更大的客流带来更多销售机会。`;
+      }
     } else if (specialRule.id === 'distanceFatigue') {
-      ruleEffectText = `本关远距补货惩罚生效，移动距离超过3格时每多1格额外消耗1点体力。合理规划路线是节省体力的关键。`;
+      ruleEffectText = `本关远距补货惩罚生效，距仓库超过3格时移动消耗递增（每3格+1体力）。合理规划路线是节省体力的关键。`;
     }
     specialRuleHtml = `
       <div class="result-goals">
@@ -6167,6 +6207,8 @@ function finish(reason) {
   if (tutorial.active && tutorial.currentStep === 4) {
     checkTutorialAction("finish");
   }
+
+  renderRuleIndicator();
 }
 
 function generateSchedulingComparisonHtml() {
@@ -6304,6 +6346,7 @@ function render() {
   renderQueue();
   renderLog();
   renderClerkBadge();
+  renderRuleIndicator();
   renderCrates();
   renderActiveEvents();
   renderPredictionPanel();
@@ -6375,6 +6418,14 @@ function renderBoard() {
       }
       if (state.player.x === x && state.player.y === y) {
         tile.classList.add("player");
+      }
+
+      const distFatigueCost = getSpecialRuleDistanceFatigue(x, y);
+      if (distFatigueCost > 0) {
+        tile.classList.add("tile-fatigue-zone");
+        if (distFatigueCost >= 2) {
+          tile.classList.add("tile-fatigue-high");
+        }
       }
 
       if (editor.active) {
