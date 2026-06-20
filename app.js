@@ -2280,20 +2280,23 @@ function recordNightResult(nightData) {
   return weekState.currentNight > TOTAL_NIGHTS || weekState.nights.every(n => n && n.completed);
 }
 
-function generateWeeklyReport() {
-  const completed = weekState.nights.filter(n => n && n.completed);
-  if (completed.length === 0) return null;
-
+function aggregateWeeklyNightTotals(completed) {
   const totalSales = completed.reduce((sum, n) => sum + n.sales, 0);
   const totalMisses = completed.reduce((sum, n) => sum + n.misses, 0);
   const totalServed = completed.reduce((sum, n) => sum + n.served, 0);
   const totalMissed = completed.reduce((sum, n) => sum + (n.missed || 0), 0);
   const totalSubServed = completed.reduce((sum, n) => sum + (n.subServed || 0), 0);
   const totalSubMissed = completed.reduce((sum, n) => sum + (n.subMissed || 0), 0);
-  const avgServiceRate = Math.round(completed.reduce((sum, n) => sum + n.serviceRate, 0) / completed.length);
   const totalScore = completed.reduce((sum, n) => sum + (n.finalScore || 0), 0);
+  const avgServiceRate = Math.round(completed.reduce((sum, n) => sum + n.serviceRate, 0) / completed.length);
   const avgScore = Math.round(totalScore / completed.length);
+  return {
+    totalSales, totalMisses, totalServed, totalMissed,
+    totalSubServed, totalSubMissed, totalScore, avgServiceRate, avgScore
+  };
+}
 
+function aggregateWeeklyCustomerByType(completed) {
   const totalServedByType = {};
   const totalMissedByType = {};
   const totalSubstituteByType = {};
@@ -2315,7 +2318,10 @@ function generateWeeklyReport() {
       });
     }
   });
+  return { totalServedByType, totalMissedByType, totalSubstituteByType, totalSubstituteDetails };
+}
 
+function buildWeeklyCustomerTypeAnalysis(totalServedByType, totalMissedByType, totalSubstituteByType) {
   const customerTypeAnalysis = [];
   const customerTypeKeys = new Set([
     ...Object.keys(totalServedByType),
@@ -2331,82 +2337,116 @@ function generateWeeklyReport() {
       const total = served + missed + substitute;
       const serviceRate = total > 0 ? Math.round(((served + substitute) / total) * 100) : 0;
       customerTypeAnalysis.push({
-        type,
-        name: ct.name,
-        icon: ct.icon,
-        color: ct.color,
-        served,
-        missed,
-        substitute,
-        total,
-        serviceRate
+        type, name: ct.name, icon: ct.icon, color: ct.color,
+        served, missed, substitute, total, serviceRate
       });
     }
   });
   customerTypeAnalysis.sort((a, b) => b.total - a.total);
+  return customerTypeAnalysis;
+}
 
-  const nightRankByScore = [...completed].sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
-  const nightRankByMiss = [...completed].sort((a, b) => a.misses - b.misses);
-
-  let grade, gradeTitle, gradeDesc;
-  if (avgServiceRate >= 90 && totalMisses <= 5) {
-    grade = 'S'; gradeTitle = '传奇店长'; gradeDesc = '无可挑剔的一周！服务满意率极高，缺货控制堪称完美。你是真正的便利店之王！';
-  } else if (avgServiceRate >= 80 && totalMisses <= 10) {
-    grade = 'A'; gradeTitle = '金牌店员'; gradeDesc = '出色的表现！整体经营稳健，顾客满意度高。继续保持这份水准！';
-  } else if (avgServiceRate >= 70) {
-    grade = 'B'; gradeTitle = '合格经营者'; gradeDesc = '中规中矩的一周。还有提升空间，重点关注缺货问题和服务效率。';
-  } else if (avgServiceRate >= 50) {
-    grade = 'C'; gradeTitle = '还需努力'; gradeDesc = '本周表现平平，缺货和服务率都需要重点改善。多练习补货路线规划吧！';
-  } else {
-    grade = 'D'; gradeTitle = '新手上路'; gradeDesc = '本周遇到了不少困难。建议先去训练模式磨练基础，再挑战连续经营。';
-  }
-
-  const eventSet = new Set();
-  completed.forEach(n => (n.events || []).forEach(e => eventSet.add(JSON.stringify({ id: e.id, name: e.name, icon: e.icon }))));
-  const uniqueEvents = Array.from(eventSet).map(s => JSON.parse(s));
-
+function buildWeeklyNightRankings(completed) {
   return {
-    weekNumber: weekState.weekNumber,
-    totalSales,
-    totalMisses,
-    totalServed,
-    totalMissed,
-    totalSubServed,
-    totalSubMissed,
-    avgServiceRate,
-    totalScore,
-    avgScore,
-    completedCount: completed.length,
-    nightRankByScore,
-    nightRankByMiss,
-    grade,
-    gradeTitle,
-    gradeDesc,
-    uniqueEvents,
-    customerTypeAnalysis,
-    totalSubstituteDetails
+    byScore: [...completed].sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0)),
+    byMiss: [...completed].sort((a, b) => a.misses - b.misses)
   };
 }
 
-function openWeeklyReport() {
-  const report = generateWeeklyReport();
-  if (!report || !weeklyReportBodyEl) return;
-
-  if (weeklyReportSubtitleEl) {
-    weeklyReportSubtitleEl.textContent = `第 ${report.weekNumber} 周经营总结`;
+function computeWeeklyGrade(avgServiceRate, totalMisses) {
+  if (avgServiceRate >= 90 && totalMisses <= 5) {
+    return {
+      grade: 'S',
+      gradeTitle: '传奇店长',
+      gradeDesc: '无可挑剔的一周！服务满意率极高，缺货控制堪称完美。你是真正的便利店之王！'
+    };
   }
+  if (avgServiceRate >= 80 && totalMisses <= 10) {
+    return {
+      grade: 'A',
+      gradeTitle: '金牌店员',
+      gradeDesc: '出色的表现！整体经营稳健，顾客满意度高。继续保持这份水准！'
+    };
+  }
+  if (avgServiceRate >= 70) {
+    return {
+      grade: 'B',
+      gradeTitle: '合格经营者',
+      gradeDesc: '中规中矩的一周。还有提升空间，重点关注缺货问题和服务效率。'
+    };
+  }
+  if (avgServiceRate >= 50) {
+    return {
+      grade: 'C',
+      gradeTitle: '还需努力',
+      gradeDesc: '本周表现平平，缺货和服务率都需要重点改善。多练习补货路线规划吧！'
+    };
+  }
+  return {
+    grade: 'D',
+    gradeTitle: '新手上路',
+    gradeDesc: '本周遇到了不少困难。建议先去训练模式磨练基础，再挑战连续经营。'
+  };
+}
 
-  let html = '';
+function collectWeeklyUniqueEvents(completed) {
+  const eventSet = new Set();
+  completed.forEach(n => (n.events || []).forEach(e => {
+    eventSet.add(JSON.stringify({ id: e.id, name: e.name, icon: e.icon }));
+  }));
+  return Array.from(eventSet).map(s => JSON.parse(s));
+}
 
-  html += `
+function generateWeeklyReport() {
+  const completed = weekState.nights.filter(n => n && n.completed);
+  if (completed.length === 0) return null;
+
+  const totals = aggregateWeeklyNightTotals(completed);
+  const typeAgg = aggregateWeeklyCustomerByType(completed);
+  const customerTypeAnalysis = buildWeeklyCustomerTypeAnalysis(
+    typeAgg.totalServedByType,
+    typeAgg.totalMissedByType,
+    typeAgg.totalSubstituteByType
+  );
+  const rankings = buildWeeklyNightRankings(completed);
+  const gradeInfo = computeWeeklyGrade(totals.avgServiceRate, totals.totalMisses);
+  const uniqueEvents = collectWeeklyUniqueEvents(completed);
+
+  return {
+    weekNumber: weekState.weekNumber,
+    totalSales: totals.totalSales,
+    totalMisses: totals.totalMisses,
+    totalServed: totals.totalServed,
+    totalMissed: totals.totalMissed,
+    totalSubServed: totals.totalSubServed,
+    totalSubMissed: totals.totalSubMissed,
+    avgServiceRate: totals.avgServiceRate,
+    totalScore: totals.totalScore,
+    avgScore: totals.avgScore,
+    completedCount: completed.length,
+    nightRankByScore: rankings.byScore,
+    nightRankByMiss: rankings.byMiss,
+    grade: gradeInfo.grade,
+    gradeTitle: gradeInfo.gradeTitle,
+    gradeDesc: gradeInfo.gradeDesc,
+    uniqueEvents: uniqueEvents,
+    customerTypeAnalysis: customerTypeAnalysis,
+    totalSubstituteDetails: typeAgg.totalSubstituteDetails
+  };
+}
+
+function renderWeeklyReportGrade(report) {
+  return `
     <div class="weekly-evaluation">
       <div class="weekly-evaluation-grade">${report.grade}</div>
       <div class="weekly-evaluation-title">${report.gradeTitle}</div>
       <div class="weekly-evaluation-desc">${report.gradeDesc}</div>
     </div>
   `;
+}
 
-  html += `
+function renderWeeklyReportSummaryCards(report) {
+  return `
     <div class="weekly-report-section">
       <h3>📊 本周核心数据</h3>
       <div class="week-summary-cards">
@@ -2437,67 +2477,70 @@ function openWeeklyReport() {
       </div>
     </div>
   `;
+}
 
-  if (report.customerTypeAnalysis && report.customerTypeAnalysis.length > 0) {
-    html += `
-      <div class="weekly-report-section">
-        <h3>👥 顾客类型分析</h3>
-        <div class="weekly-customer-analysis">
-          ${report.customerTypeAnalysis.map(cta => {
-            const servePercent = cta.total > 0 ? Math.round((cta.served / cta.total) * 100) : 0;
-            const subPercent = cta.total > 0 ? Math.round((cta.substitute / cta.total) * 100) : 0;
-            const missPercent = cta.total > 0 ? Math.round((cta.missed / cta.total) * 100) : 0;
-            return `
-              <div class="weekly-customer-item">
-                <div class="weekly-customer-header">
-                  <span class="weekly-customer-icon" style="background:${cta.color}20; border:1px solid ${cta.color};">${cta.icon}</span>
-                  <span class="weekly-customer-name">${cta.name}</span>
-                  <span class="weekly-customer-total">共 ${cta.total} 位</span>
-                </div>
-                <div class="weekly-customer-stats">
-                  <span style="color:#74b06a;">✓ 服务 ${cta.served} (${servePercent}%)</span>
-                  ${cta.substitute > 0 ? `<span style="color:#e6a23c;">🔄 替代 ${cta.substitute} (${subPercent}%)</span>` : ''}
-                  ${cta.missed > 0 ? `<span style="color:#d45f4c;">✗ 流失 ${cta.missed} (${missPercent}%)</span>` : ''}
-                </div>
-                <div class="weekly-customer-bar">
-                  <div class="weekly-customer-bar-fill" style="width:${100 - missPercent}%; background:linear-gradient(90deg, #74b06a 0%, #74b06a ${100 - subPercent}%, #e6a23c ${100 - subPercent}%, #e6a23c 100%);"></div>
-                  <div class="weekly-customer-bar-fill miss" style="width:${missPercent}%; left:${100 - missPercent}%;"></div>
-                </div>
-              </div>
-            `;
-          }).join('')}
+function renderWeeklyReportCustomerAnalysis(customerTypeAnalysis) {
+  if (!customerTypeAnalysis || customerTypeAnalysis.length === 0) return '';
+  const itemsHtml = customerTypeAnalysis.map(cta => {
+    const servePercent = cta.total > 0 ? Math.round((cta.served / cta.total) * 100) : 0;
+    const subPercent = cta.total > 0 ? Math.round((cta.substitute / cta.total) * 100) : 0;
+    const missPercent = cta.total > 0 ? Math.round((cta.missed / cta.total) * 100) : 0;
+    return `
+      <div class="weekly-customer-item">
+        <div class="weekly-customer-header">
+          <span class="weekly-customer-icon" style="background:${cta.color}20; border:1px solid ${cta.color};">${cta.icon}</span>
+          <span class="weekly-customer-name">${cta.name}</span>
+          <span class="weekly-customer-total">共 ${cta.total} 位</span>
+        </div>
+        <div class="weekly-customer-stats">
+          <span style="color:#74b06a;">✓ 服务 ${cta.served} (${servePercent}%)</span>
+          ${cta.substitute > 0 ? `<span style="color:#e6a23c;">🔄 替代 ${cta.substitute} (${subPercent}%)</span>` : ''}
+          ${cta.missed > 0 ? `<span style="color:#d45f4c;">✗ 流失 ${cta.missed} (${missPercent}%)</span>` : ''}
+        </div>
+        <div class="weekly-customer-bar">
+          <div class="weekly-customer-bar-fill" style="width:${100 - missPercent}%; background:linear-gradient(90deg, #74b06a 0%, #74b06a ${100 - subPercent}%, #e6a23c ${100 - subPercent}%, #e6a23c 100%);"></div>
+          <div class="weekly-customer-bar-fill miss" style="width:${missPercent}%; left:${100 - missPercent}%;"></div>
         </div>
       </div>
     `;
-  }
+  }).join('');
+  return `
+    <div class="weekly-report-section">
+      <h3>👥 顾客类型分析</h3>
+      <div class="weekly-customer-analysis">${itemsHtml}</div>
+    </div>
+  `;
+}
 
-  if (report.totalSubServed > 0 && Object.keys(report.totalSubstituteDetails || {}).length > 0) {
-    const subDetails = Object.entries(report.totalSubstituteDetails)
-      .filter(([goodKey, count]) => count > 0 && goods[goodKey])
-      .sort((a, b) => b[1] - a[1])
-      .map(([goodKey, count]) => `${goods[goodKey].icon}${goods[goodKey].name}×${count}`)
-      .join('、');
-    html += `
-      <div class="weekly-report-section">
-        <h3>🔄 替代购买汇总</h3>
-        <div style="background:linear-gradient(90deg, rgba(230,162,60,0.12) 0%, transparent 100%); padding:12px 16px; border-radius:8px; border-left:4px solid #e6a23c;">
-          <div style="font-size:14px; color:#cdd7cb; margin-bottom:4px;">
-            本周共成功完成 <strong style="color:#74b06a; font-size:16px;">${report.totalSubServed}</strong> 次替代服务
-            ${report.totalSubMissed > 0 ? `，替代失败 <strong style="color:#d45f4c;">${report.totalSubMissed}</strong> 次` : ''}
-          </div>
-          <div style="font-size:13px; color:#8fa192;">
-            替代需求商品：${subDetails}
-          </div>
+function renderWeeklyReportSubstituteSummary(report) {
+  if (!(report.totalSubServed > 0) || Object.keys(report.totalSubstituteDetails || {}).length === 0) return '';
+  const subDetails = Object.entries(report.totalSubstituteDetails)
+    .filter(([goodKey, count]) => count > 0 && goods[goodKey])
+    .sort((a, b) => b[1] - a[1])
+    .map(([goodKey, count]) => `${goods[goodKey].icon}${goods[goodKey].name}×${count}`)
+    .join('、');
+  return `
+    <div class="weekly-report-section">
+      <h3>🔄 替代购买汇总</h3>
+      <div style="background:linear-gradient(90deg, rgba(230,162,60,0.12) 0%, transparent 100%); padding:12px 16px; border-radius:8px; border-left:4px solid #e6a23c;">
+        <div style="font-size:14px; color:#cdd7cb; margin-bottom:4px;">
+          本周共成功完成 <strong style="color:#74b06a; font-size:16px;">${report.totalSubServed}</strong> 次替代服务
+          ${report.totalSubMissed > 0 ? `，替代失败 <strong style="color:#d45f4c;">${report.totalSubMissed}</strong> 次` : ''}
+        </div>
+        <div style="font-size:13px; color:#8fa192;">
+          替代需求商品：${subDetails}
         </div>
       </div>
-    `;
-  }
+    </div>
+  `;
+}
 
-  html += `
+function renderWeeklyReportRankByScore(nightRankByScore) {
+  return `
     <div class="weekly-report-section">
       <h3>🏆 最佳夜晚排名（按评分）</h3>
       <div class="weekly-rank-list">
-        ${report.nightRankByScore.map((n, idx) => `
+        ${nightRankByScore.map((n, idx) => `
           <div class="weekly-rank-item">
             <div class="weekly-rank-num rank-${idx < 3 ? idx + 1 : 'other'}">${idx + 1}</div>
             <div class="weekly-rank-info">
@@ -2510,12 +2553,14 @@ function openWeeklyReport() {
       </div>
     </div>
   `;
+}
 
-  html += `
+function renderWeeklyReportRankByMiss(nightRankByMiss) {
+  return `
     <div class="weekly-report-section">
       <h3>📦 缺货最少排名</h3>
       <div class="weekly-rank-list">
-        ${report.nightRankByMiss.map((n, idx) => `
+        ${nightRankByMiss.map((n, idx) => `
           <div class="weekly-rank-item">
             <div class="weekly-rank-num rank-${idx < 3 ? idx + 1 : 'other'}">${idx + 1}</div>
             <div class="weekly-rank-info">
@@ -2528,23 +2573,45 @@ function openWeeklyReport() {
       </div>
     </div>
   `;
+}
 
-  if (report.uniqueEvents.length > 0) {
-    html += `
-      <div class="weekly-report-section">
-        <h3>⚡ 本周触发的经营事件</h3>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${report.uniqueEvents.map(e => `
-            <span style="background:#1e2a23;border:1px solid #3f5246;border-radius:6px;padding:6px 12px;font-size:13px;color:#cdd7cb;">
-              ${e.icon || '⚡'} ${e.name}
-            </span>
-          `).join('')}
-        </div>
+function renderWeeklyReportUniqueEvents(uniqueEvents) {
+  if (!uniqueEvents || uniqueEvents.length === 0) return '';
+  return `
+    <div class="weekly-report-section">
+      <h3>⚡ 本周触发的经营事件</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${uniqueEvents.map(e => `
+          <span style="background:#1e2a23;border:1px solid #3f5246;border-radius:6px;padding:6px 12px;font-size:13px;color:#cdd7cb;">
+            ${e.icon || '⚡'} ${e.name}
+          </span>
+        `).join('')}
       </div>
-    `;
+    </div>
+  `;
+}
+
+function buildWeeklyReportHtml(report) {
+  let html = '';
+  html += renderWeeklyReportGrade(report);
+  html += renderWeeklyReportSummaryCards(report);
+  html += renderWeeklyReportCustomerAnalysis(report.customerTypeAnalysis);
+  html += renderWeeklyReportSubstituteSummary(report);
+  html += renderWeeklyReportRankByScore(report.nightRankByScore);
+  html += renderWeeklyReportRankByMiss(report.nightRankByMiss);
+  html += renderWeeklyReportUniqueEvents(report.uniqueEvents);
+  return html;
+}
+
+function openWeeklyReport() {
+  const report = generateWeeklyReport();
+  if (!report || !weeklyReportBodyEl) return;
+
+  if (weeklyReportSubtitleEl) {
+    weeklyReportSubtitleEl.textContent = `第 ${report.weekNumber} 周经营总结`;
   }
 
-  weeklyReportBodyEl.innerHTML = html;
+  weeklyReportBodyEl.innerHTML = buildWeeklyReportHtml(report);
   weeklyReportOverlay.classList.remove("hidden");
 }
 
@@ -4996,6 +5063,126 @@ function extractCustomerStats(customersObj) {
   return stats;
 }
 
+function calculateServiceRate(customersObj) {
+  if (!customersObj) return 100;
+  const served = customersObj.servedCount || 0;
+  const missed = customersObj.missedCount || 0;
+  const total = served + missed;
+
+  let satScore = 0;
+  let satTotal = 0;
+  Object.entries(customersObj.servedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionServed || 1.0);
+      satTotal += count;
+    }
+  });
+  Object.entries(customersObj.substituteServedByType || {}).forEach(([subKey, count]) => {
+    if (!subKey.startsWith('sub_')) return;
+    const ctId = subKey.substring(4);
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionSubstitute || 0.8);
+      satTotal += count;
+    }
+  });
+  Object.entries(customersObj.missedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore -= count * (ct.satisfactionMiss || 1.0);
+      satTotal += count;
+    }
+  });
+  return satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
+}
+
+function buildGoodStats(goodKeys, sessionSalesCount, sessionMissCount) {
+  const result = [];
+  goodKeys.forEach(key => {
+    if (goods[key]) {
+      result.push({
+        key: key,
+        name: goods[key].name,
+        icon: goods[key].icon,
+        missCount: sessionMissCount ? (sessionMissCount[key] || 0) : 0,
+        saleCount: sessionSalesCount ? (sessionSalesCount[key] || 0) : 0
+      });
+    }
+  });
+  result.sort((a, b) => b.missCount - a.missCount);
+  return result;
+}
+
+function buildWorstGoodInfo(goodStats) {
+  return goodStats.length > 0 && goodStats[0].missCount > 0 ? goodStats[0] : null;
+}
+
+function aggregateTotalShelfSales(sessionShelfStats) {
+  const totalShelfSales = {};
+  if (sessionShelfStats) {
+    for (const goodKey in sessionShelfStats) {
+      for (const shelfId in sessionShelfStats[goodKey]) {
+        totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + sessionShelfStats[goodKey][shelfId];
+      }
+    }
+  }
+  return totalShelfSales;
+}
+
+function buildWorstShelfInfo(levelShelves, sessionShelfMissCount, totalShelfSales) {
+  let worstShelf = null;
+  let worstShelfMisses = 0;
+  if (sessionShelfMissCount) {
+    for (const sid in sessionShelfMissCount) {
+      if (sessionShelfMissCount[sid] > worstShelfMisses) {
+        worstShelfMisses = sessionShelfMissCount[sid];
+        worstShelf = sid;
+      }
+    }
+  }
+  if (!worstShelf || worstShelfMisses <= 0) return null;
+  const shelfGoodKey = levelShelves.find(s => s.id === worstShelf)?.good;
+  const shelfGood = shelfGoodKey ? goods[shelfGoodKey] : null;
+  return {
+    id: worstShelf,
+    goodKey: shelfGoodKey,
+    goodName: shelfGood ? shelfGood.name : '',
+    goodIcon: shelfGood ? shelfGood.icon : '🗄️',
+    missCount: worstShelfMisses,
+    saleCount: totalShelfSales[worstShelf] || 0
+  };
+}
+
+function buildShelfStats(levelShelves, sessionShelfMissCount, totalShelfSales) {
+  const result = [];
+  if (levelShelves) {
+    levelShelves.forEach(shelf => {
+      const good = goods[shelf.good];
+      const missCount = sessionShelfMissCount ? (sessionShelfMissCount[shelf.id] || 0) : 0;
+      const saleCount = totalShelfSales[shelf.id] || 0;
+      result.push({
+        id: shelf.id,
+        goodKey: shelf.good,
+        goodName: good ? good.name : '',
+        goodIcon: good ? good.icon : '🗄️',
+        missCount: missCount,
+        saleCount: saleCount
+      });
+    });
+  }
+  result.sort((a, b) => b.missCount - a.missCount);
+  return result;
+}
+
+function buildSubstituteStats(customersObj, sessionSubstituteSales) {
+  return {
+    served: customersObj?.substituteServedCount || 0,
+    missed: customersObj?.substituteMissedCount || 0,
+    details: sessionSubstituteSales ? { ...sessionSubstituteSales } : {}
+  };
+}
+
 function generateNightReportFromReplay(replayData) {
   if (!replayData || !replayData.frames || replayData.frames.length === 0) {
     return null;
@@ -5200,134 +5387,22 @@ function generateNightReportFromReplay(replayData) {
 
   timelineEvents.sort((a, b) => a.tick - b.tick);
 
-  let worstGood = null;
-  let worstGoodMisses = 0;
-  if (lastFrame.sessionMissCount) {
-    for (const key in lastFrame.sessionMissCount) {
-      if (lastFrame.sessionMissCount[key] > worstGoodMisses) {
-        worstGoodMisses = lastFrame.sessionMissCount[key];
-        worstGood = key;
-      }
-    }
-  }
-
-  let totalShelfSales = {};
-  if (lastFrame.sessionShelfStats) {
-    for (const goodKey in lastFrame.sessionShelfStats) {
-      for (const shelfId in lastFrame.sessionShelfStats[goodKey]) {
-        totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + lastFrame.sessionShelfStats[goodKey][shelfId];
-      }
-    }
-  }
-
-  let worstShelf = null;
-  let worstShelfMisses = 0;
-  if (lastFrame.sessionShelfMissCount) {
-    for (const sid in lastFrame.sessionShelfMissCount) {
-      if (lastFrame.sessionShelfMissCount[sid] > worstShelfMisses) {
-        worstShelfMisses = lastFrame.sessionShelfMissCount[sid];
-        worstShelf = sid;
-      }
-    }
-  }
-
-  let worstGoodInfo = null;
-  if (worstGood && goods[worstGood]) {
-    worstGoodInfo = {
-      key: worstGood,
-      name: goods[worstGood].name,
-      icon: goods[worstGood].icon,
-      missCount: worstGoodMisses,
-      saleCount: lastFrame.sessionSalesCount ? (lastFrame.sessionSalesCount[worstGood] || 0) : 0
-    };
-  }
-
-  let worstShelfInfo = null;
-  if (worstShelf && worstShelfMisses > 0) {
-    const shelfGoodKey = level.shelves.find(s => s.id === worstShelf)?.good;
-    const shelfGood = shelfGoodKey ? goods[shelfGoodKey] : null;
-    worstShelfInfo = {
-      id: worstShelf,
-      goodKey: shelfGoodKey,
-      goodName: shelfGood ? shelfGood.name : '',
-      goodIcon: shelfGood ? shelfGood.icon : '🗄️',
-      missCount: worstShelfMisses,
-      saleCount: totalShelfSales[worstShelf] || 0
-    };
-  }
-
-  const goodStats = [];
   const goodKeys = getCurrentLevelGoodKeys ? getCurrentLevelGoodKeys() : Object.keys(goods);
-  goodKeys.forEach(key => {
-    if (goods[key]) {
-      goodStats.push({
-        key: key,
-        name: goods[key].name,
-        icon: goods[key].icon,
-        missCount: lastFrame.sessionMissCount ? (lastFrame.sessionMissCount[key] || 0) : 0,
-        saleCount: lastFrame.sessionSalesCount ? (lastFrame.sessionSalesCount[key] || 0) : 0
-      });
-    }
-  });
-  goodStats.sort((a, b) => b.missCount - a.missCount);
+  const goodStats = buildGoodStats(goodKeys, lastFrame.sessionSalesCount, lastFrame.sessionMissCount);
+  const worstGoodInfo = buildWorstGoodInfo(goodStats);
 
-  const shelfStats = [];
-  if (level.shelves) {
-    level.shelves.forEach(shelf => {
-      const good = goods[shelf.good];
-      const missCount = lastFrame.sessionShelfMissCount ? (lastFrame.sessionShelfMissCount[shelf.id] || 0) : 0;
-      const saleCount = totalShelfSales[shelf.id] || 0;
-      shelfStats.push({
-        id: shelf.id,
-        goodKey: shelf.good,
-        goodName: good ? good.name : '',
-        goodIcon: good ? good.icon : '🗄️',
-        missCount: missCount,
-        saleCount: saleCount
-      });
-    });
-  }
-  shelfStats.sort((a, b) => b.missCount - a.missCount);
+  const totalShelfSales = aggregateTotalShelfSales(lastFrame.sessionShelfStats);
+  const worstShelfInfo = buildWorstShelfInfo(level.shelves, lastFrame.sessionShelfMissCount, totalShelfSales);
+  const shelfStats = buildShelfStats(level.shelves, lastFrame.sessionShelfMissCount, totalShelfSales);
 
   const served = lastFrame.customers ? lastFrame.customers.servedCount : 0;
   const missed = lastFrame.customers ? lastFrame.customers.missedCount : 0;
   const subServed = lastFrame.customers?.substituteServedCount || 0;
   const subMissed = lastFrame.customers?.substituteMissedCount || 0;
-  const total = served + missed;
-
-  let satScore = 0;
-  let satTotal = 0;
-  Object.entries(lastFrame.customers?.servedByType || {}).forEach(([ctId, count]) => {
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore += count * (ct.satisfactionServed || 1.0);
-      satTotal += count;
-    }
-  });
-  Object.entries(lastFrame.customers?.substituteServedByType || {}).forEach(([subKey, count]) => {
-    if (!subKey.startsWith('sub_')) return;
-    const ctId = subKey.substring(4);
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore += count * (ct.satisfactionSubstitute || 0.8);
-      satTotal += count;
-    }
-  });
-  Object.entries(lastFrame.customers?.missedByType || {}).forEach(([ctId, count]) => {
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore -= count * (ct.satisfactionMiss || 1.0);
-      satTotal += count;
-    }
-  });
-  const serviceRate = satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
+  const serviceRate = calculateServiceRate(lastFrame.customers);
 
   const customerStats = extractCustomerStats(lastFrame.customers);
-  const substituteStats = {
-    served: subServed,
-    missed: subMissed,
-    details: lastFrame.sessionSubstituteSales ? { ...lastFrame.sessionSubstituteSales } : {}
-  };
+  const substituteStats = buildSubstituteStats(lastFrame.customers, lastFrame.sessionSubstituteSales);
 
   return {
     timelineEvents: timelineEvents,
@@ -5352,48 +5427,17 @@ function generateNightReportFromReplay(replayData) {
   };
 }
 
-function generateNightReportFromState() {
-  const level = getCurrentLevel();
-  const served = state.customers.servedCount;
-  const missed = state.customers.missedCount;
-  const subServed = state.customers.substituteServedCount || 0;
-  const subMissed = state.customers.substituteMissedCount || 0;
-  const total = served + missed;
-
-  let satScore = 0;
-  let satTotal = 0;
-  Object.entries(state.customers.servedByType || {}).forEach(([ctId, count]) => {
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore += count * (ct.satisfactionServed || 1.0);
-      satTotal += count;
-    }
-  });
-  Object.entries(state.customers.substituteServedByType || {}).forEach(([subKey, count]) => {
-    if (!subKey.startsWith('sub_')) return;
-    const ctId = subKey.substring(4);
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore += count * (ct.satisfactionSubstitute || 0.8);
-      satTotal += count;
-    }
-  });
-  Object.entries(state.customers.missedByType || {}).forEach(([ctId, count]) => {
-    const ct = customerTypes[ctId];
-    if (ct && count > 0) {
-      satScore -= count * (ct.satisfactionMiss || 1.0);
-      satTotal += count;
-    }
-  });
-  const serviceRate = satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
+function calculateNightFinalScore(serviceRate, missed) {
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
   let schedulingBonus = 0;
   if (schedulingState.active && schedulingState.selectedStrategy) {
     schedulingBonus = calculateSchedulingBonus(serviceRate, missed);
   }
-  const finalScore = baseScore + goalsBonus + schedulingBonus;
+  return baseScore + goalsBonus + schedulingBonus;
+}
 
+function computeClerkUpgradeForReport(finalScore) {
   const clerkData = loadClerkData();
   const expGained = Math.max(10, Math.floor(finalScore * 0.3));
   const totalExp = clerkData.exp + expGained;
@@ -5407,8 +5451,12 @@ function generateNightReportFromState() {
   }
   const leveledUp = newLevel > prevLevel;
   const newLevelInfo = leveledUp ? clerkLevels.find(cl => cl.level === newLevel) : null;
+  return { prevLevel, newLevel, leveledUp, newLevelInfo };
+}
 
+function buildTimelineEventsFromState(prevLevel, newLevel, leveledUp, newLevelInfo) {
   const timelineEvents = [];
+  const specialRuleForReport = getLevelSpecialRule();
 
   if (state.goals && state.goals.length > 0) {
     const goalTexts = state.goals.map(g => `${g.completed ? '✓' : (g.failed ? '✗' : '○')} ${g.title}`).join('、');
@@ -5427,7 +5475,6 @@ function generateNightReportFromState() {
     desc: '卷帘门拉起，深夜便利店开始营业'
   });
 
-  const specialRuleForReport = getLevelSpecialRule();
   if (specialRuleForReport) {
     timelineEvents.push({
       type: 'rule',
@@ -5493,82 +5540,31 @@ function generateNightReportFromState() {
   });
 
   timelineEvents.sort((a, b) => a.tick - b.tick);
+  return { timelineEvents, specialRuleForReport };
+}
 
-  const goodStats = [];
+function generateNightReportFromState() {
+  const level = getCurrentLevel();
+  const served = state.customers.servedCount;
+  const missed = state.customers.missedCount;
+  const subServed = state.customers.substituteServedCount || 0;
+  const subMissed = state.customers.substituteMissedCount || 0;
+  const serviceRate = calculateServiceRate(state.customers);
+  const finalScore = calculateNightFinalScore(serviceRate, missed);
+
+  const { prevLevel, newLevel, leveledUp, newLevelInfo } = computeClerkUpgradeForReport(finalScore);
+  const { timelineEvents, specialRuleForReport } = buildTimelineEventsFromState(prevLevel, newLevel, leveledUp, newLevelInfo);
+
   const goodKeys = getCurrentLevelGoodKeys();
-  goodKeys.forEach(key => {
-    if (goods[key]) {
-      goodStats.push({
-        key: key,
-        name: goods[key].name,
-        icon: goods[key].icon,
-        missCount: state.sessionMissCount ? (state.sessionMissCount[key] || 0) : 0,
-        saleCount: state.sessionSalesCount ? (state.sessionSalesCount[key] || 0) : 0
-      });
-    }
-  });
-  goodStats.sort((a, b) => b.missCount - a.missCount);
+  const goodStats = buildGoodStats(goodKeys, state.sessionSalesCount, state.sessionMissCount);
+  const worstGood = buildWorstGoodInfo(goodStats);
 
-  let worstGood = goodStats.length > 0 && goodStats[0].missCount > 0 ? goodStats[0] : null;
-
-  let totalShelfSales = {};
-  if (state.sessionShelfStats) {
-    for (const goodKey in state.sessionShelfStats) {
-      for (const shelfId in state.sessionShelfStats[goodKey]) {
-        totalShelfSales[shelfId] = (totalShelfSales[shelfId] || 0) + state.sessionShelfStats[goodKey][shelfId];
-      }
-    }
-  }
-
-  let worstShelf = null;
-  let worstShelfMisses = 0;
-  if (state.sessionShelfMissCount) {
-    for (const sid in state.sessionShelfMissCount) {
-      if (state.sessionShelfMissCount[sid] > worstShelfMisses) {
-        worstShelfMisses = state.sessionShelfMissCount[sid];
-        worstShelf = sid;
-      }
-    }
-  }
-
-  let worstShelfInfo = null;
-  if (worstShelf && worstShelfMisses > 0) {
-    const shelfGoodKey = level.shelves.find(s => s.id === worstShelf)?.good;
-    const shelfGood = shelfGoodKey ? goods[shelfGoodKey] : null;
-    worstShelfInfo = {
-      id: worstShelf,
-      goodKey: shelfGoodKey,
-      goodName: shelfGood ? shelfGood.name : '',
-      goodIcon: shelfGood ? shelfGood.icon : '🗄️',
-      missCount: worstShelfMisses,
-      saleCount: totalShelfSales[worstShelf] || 0
-    };
-  }
-
-  const shelfStats = [];
-  if (level.shelves) {
-    level.shelves.forEach(shelf => {
-      const good = goods[shelf.good];
-      const missCount = state.sessionShelfMissCount ? (state.sessionShelfMissCount[shelf.id] || 0) : 0;
-      const saleCount = totalShelfSales[shelf.id] || 0;
-      shelfStats.push({
-        id: shelf.id,
-        goodKey: shelf.good,
-        goodName: good ? good.name : '',
-        goodIcon: good ? good.icon : '🗄️',
-        missCount: missCount,
-        saleCount: saleCount
-      });
-    });
-  }
-  shelfStats.sort((a, b) => b.missCount - a.missCount);
+  const totalShelfSales = aggregateTotalShelfSales(state.sessionShelfStats);
+  const worstShelfInfo = buildWorstShelfInfo(level.shelves, state.sessionShelfMissCount, totalShelfSales);
+  const shelfStats = buildShelfStats(level.shelves, state.sessionShelfMissCount, totalShelfSales);
 
   const customerStats = extractCustomerStats(state.customers);
-  const substituteStats = {
-    served: subServed,
-    missed: subMissed,
-    details: state.sessionSubstituteSales ? { ...state.sessionSubstituteSales } : {}
-  };
+  const substituteStats = buildSubstituteStats(state.customers, state.sessionSubstituteSales);
 
   return {
     timelineEvents: timelineEvents,
