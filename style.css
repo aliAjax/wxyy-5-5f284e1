@@ -5902,3 +5902,82 @@ h2 {
   place-items: center;
   font-weight: 700;
 }
+
+.weekly-customer-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.weekly-customer-item {
+  background: #1e2a23;
+  border: 1px solid #3f5246;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.weekly-customer-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.weekly-customer-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+
+.weekly-customer-name {
+  font-weight: 600;
+  color: #cdd7cb;
+  flex: 1;
+}
+
+.weekly-customer-total {
+  font-size: 12px;
+  color: #8fa192;
+  background: #2a3a30;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.weekly-customer-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.weekly-customer-bar {
+  height: 6px;
+  background: #2a3a30;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.weekly-customer-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.weekly-customer-bar-fill.miss {
+  background: #d45f4c !important;
+}
+
+.report-substitute-summary {
+  margin-bottom: 12px;
+}
+
+#nightReportCustomerStats .report-stat-row {
+  margin-bottom: 8px;
+}

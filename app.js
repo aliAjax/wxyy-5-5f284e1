@@ -313,6 +313,7 @@ const nightReportSubtitle = document.getElementById("nightReportSubtitle");
 const nightReportTimeline = document.getElementById("nightReportTimeline");
 const nightReportStats = document.getElementById("nightReportStats");
 const nightReportShelfStats = document.getElementById("nightReportShelfStats");
+const nightReportCustomerStats = document.getElementById("nightReportCustomerStats");
 const reportFinalScore = document.getElementById("reportFinalScore");
 const reportServiceRate = document.getElementById("reportServiceRate");
 const reportMisses = document.getElementById("reportMisses");
@@ -330,7 +331,9 @@ const nightReportData = {
   serviceRate: 0,
   misses: 0,
   levelId: null,
-  levelName: ''
+  levelName: '',
+  customerStats: null,
+  substituteStats: null
 };
 
 const weekProgressEl = document.getElementById("weekProgress");
@@ -1993,6 +1996,9 @@ function createEmptyNightRecord() {
     sales: 0,
     misses: 0,
     served: 0,
+    missed: 0,
+    subServed: 0,
+    subMissed: 0,
     serviceRate: 0,
     finalScore: 0,
     energy: 0,
@@ -2000,6 +2006,11 @@ function createEmptyNightRecord() {
     events: [],
     goodsStats: {},
     shelfStats: {},
+    customerStats: null,
+    substituteStats: null,
+    servedByType: {},
+    missedByType: {},
+    substituteServedByType: {},
     timestamp: null
   };
 }
@@ -2039,13 +2050,40 @@ function renderWeekArchiveBody() {
   const totalSales = allCompleted.reduce((sum, n) => sum + n.sales, 0);
   const totalMisses = allCompleted.reduce((sum, n) => sum + n.misses, 0);
   const totalServed = allCompleted.reduce((sum, n) => sum + n.served, 0);
+  const totalMissed = allCompleted.reduce((sum, n) => sum + (n.missed || 0), 0);
+  const totalSubServed = allCompleted.reduce((sum, n) => sum + (n.subServed || 0), 0);
+  const totalSubMissed = allCompleted.reduce((sum, n) => sum + (n.subMissed || 0), 0);
   const totalScore = allCompleted.reduce((sum, n) => sum + (n.finalScore || 0), 0);
+
+  const totalServedByType = {};
+  const totalSubstituteByType = {};
+  allCompleted.forEach(n => {
+    Object.entries(n.servedByType || {}).forEach(([type, count]) => {
+      totalServedByType[type] = (totalServedByType[type] || 0) + count;
+    });
+    Object.entries(n.substituteServedByType || {}).forEach(([key, count]) => {
+      const type = key.replace('substitute_', '');
+      totalSubstituteByType[type] = (totalSubstituteByType[type] || 0) + count;
+    });
+  });
+
   const avgServiceRate = allCompleted.length > 0
     ? Math.round(allCompleted.reduce((sum, n) => sum + n.serviceRate, 0) / allCompleted.length)
     : 0;
   const avgScore = allCompleted.length > 0
     ? Math.round(totalScore / allCompleted.length)
     : 0;
+
+  let customerTypeSummary = '';
+  if (Object.keys(totalServedByType).length > 0) {
+    const sortedTypes = Object.entries(totalServedByType)
+      .filter(([type]) => customerTypes[type])
+      .sort((a, b) => b[1] - a[1]);
+    customerTypeSummary = sortedTypes.map(([type, count]) => {
+      const ct = customerTypes[type];
+      return `<span style="display:inline-block; padding:3px 8px; background:${ct.color}15; border:1px solid ${ct.color}30; border-radius:10px; margin:2px; font-size:12px;">${ct.icon} ${ct.name} ${count}</span>`;
+    }).join('');
+  }
 
   if (weekArchiveSubtitleEl) {
     const isFinished = allCompleted.length >= TOTAL_NIGHTS;
@@ -2074,9 +2112,9 @@ function renderWeekArchiveBody() {
           <div class="week-summary-value">${totalMisses}</div>
           <div class="week-summary-label">累计缺货</div>
         </div>
-        <div class="week-summary-card">
-          <div class="week-summary-value">${totalScore}</div>
-          <div class="week-summary-label">总评分</div>
+        <div class="week-summary-card" style="background:linear-gradient(135deg, rgba(230,162,60,0.1) 0%, rgba(230,162,60,0.05) 100%); border:1px solid rgba(230,162,60,0.25);">
+          <div class="week-summary-value" style="color:#e6a23c;">🔄 ${totalSubServed}</div>
+          <div class="week-summary-label">替代服务</div>
         </div>
         <div class="week-summary-card">
           <div class="week-summary-value">${avgScore}</div>
@@ -2084,6 +2122,16 @@ function renderWeekArchiveBody() {
         </div>
       </div>
     `;
+    if (customerTypeSummary) {
+      html += `
+        <div class="week-summary-cards" style="margin-top:12px;">
+          <div class="week-summary-card" style="flex:2; min-width:300px;">
+            <div class="week-summary-label" style="font-size:13px; margin-bottom:6px;">👥 顾客类型分布</div>
+            <div style="line-height:1.8;">${customerTypeSummary}</div>
+          </div>
+        </div>
+      `;
+    }
   }
 
   for (let i = 1; i <= TOTAL_NIGHTS; i++) {
@@ -2091,6 +2139,19 @@ function renderWeekArchiveBody() {
     if (record && record.completed) {
       const eventsSummary = (record.events || []).map(e => `${e.icon || '⚡'}${e.name}`).join('、') || '无特殊事件';
       const goalsSummary = (record.goals || []).map(g => `${g.completed ? '✓' : '✗'} ${g.title}`).join('；') || '无目标';
+
+      let customerTypeHtml = '';
+      if (record.customerStats && record.customerStats.byType) {
+        const typeEntries = Object.entries(record.customerStats.byType)
+          .filter(([_, cs]) => cs.total > 0)
+          .sort((a, b) => b[1].total - a[1].total);
+        if (typeEntries.length > 0) {
+          customerTypeHtml = typeEntries.map(([_, cs]) => {
+            return `<span style="display:inline-block; padding:2px 6px; background:${cs.color}15; border:1px solid ${cs.color}30; border-radius:8px; margin:1px; font-size:11px;">${cs.icon}${cs.total}</span>`;
+          }).join('');
+        }
+      }
+
       html += `
         <div class="night-archive-card completed">
           <div class="night-archive-header">
@@ -2118,14 +2179,17 @@ function renderWeekArchiveBody() {
               <div class="night-archive-stat-value">${record.served}</div>
               <div class="night-archive-stat-label">服务顾客</div>
             </div>
-            <div class="night-archive-stat">
-              <div class="night-archive-stat-value">${record.energy}</div>
-              <div class="night-archive-stat-label">剩余体力</div>
+            ${(record.subServed || 0) > 0 ? `
+            <div class="night-archive-stat" style="background:rgba(230,162,60,0.1);">
+              <div class="night-archive-stat-value" style="color:#e6a23c;">🔄${record.subServed}</div>
+              <div class="night-archive-stat-label">替代服务</div>
             </div>
+            ` : ''}
           </div>
           <div class="night-archive-detail">
             <strong>目标达成：</strong>${goalsSummary}<br>
             ${record.strategyName ? `<strong>排班策略：</strong>${record.strategyName}<br>` : ''}
+            ${customerTypeHtml ? `<strong>顾客类型：</strong>${customerTypeHtml}<br>` : ''}
             ${record.energy !== undefined ? `<strong>剩余体力：</strong>${record.energy} 点<br>` : ''}
           </div>
           <div class="night-archive-events">
@@ -2173,6 +2237,9 @@ function recordNightResult(nightData) {
   record.sales = nightData.sales;
   record.misses = nightData.misses;
   record.served = nightData.served;
+  record.missed = nightData.missed || 0;
+  record.subServed = nightData.subServed || 0;
+  record.subMissed = nightData.subMissed || 0;
   record.serviceRate = nightData.serviceRate;
   record.finalScore = nightData.finalScore;
   record.energy = nightData.energy;
@@ -2180,6 +2247,11 @@ function recordNightResult(nightData) {
   record.events = nightData.events || [];
   record.goodsStats = nightData.goodsStats || {};
   record.shelfStats = nightData.shelfStats || {};
+  record.customerStats = nightData.customerStats || null;
+  record.substituteStats = nightData.substituteStats || null;
+  record.servedByType = nightData.servedByType || {};
+  record.missedByType = nightData.missedByType || {};
+  record.substituteServedByType = nightData.substituteServedByType || {};
   record.timestamp = Date.now();
 
   const nightIndex = weekState.currentNight - 1;
@@ -2202,9 +2274,57 @@ function generateWeeklyReport() {
   const totalSales = completed.reduce((sum, n) => sum + n.sales, 0);
   const totalMisses = completed.reduce((sum, n) => sum + n.misses, 0);
   const totalServed = completed.reduce((sum, n) => sum + n.served, 0);
+  const totalMissed = completed.reduce((sum, n) => sum + (n.missed || 0), 0);
+  const totalSubServed = completed.reduce((sum, n) => sum + (n.subServed || 0), 0);
+  const totalSubMissed = completed.reduce((sum, n) => sum + (n.subMissed || 0), 0);
   const avgServiceRate = Math.round(completed.reduce((sum, n) => sum + n.serviceRate, 0) / completed.length);
   const totalScore = completed.reduce((sum, n) => sum + (n.finalScore || 0), 0);
   const avgScore = Math.round(totalScore / completed.length);
+
+  const totalServedByType = {};
+  const totalMissedByType = {};
+  const totalSubstituteByType = {};
+  const totalSubstituteDetails = {};
+  completed.forEach(n => {
+    Object.entries(n.servedByType || {}).forEach(([type, count]) => {
+      totalServedByType[type] = (totalServedByType[type] || 0) + count;
+    });
+    Object.entries(n.missedByType || {}).forEach(([type, count]) => {
+      totalMissedByType[type] = (totalMissedByType[type] || 0) + count;
+    });
+    Object.entries(n.substituteServedByType || {}).forEach(([key, count]) => {
+      const type = key.replace('substitute_', '');
+      totalSubstituteByType[type] = (totalSubstituteByType[type] || 0) + count;
+    });
+    if (n.substituteStats && n.substituteStats.details) {
+      Object.entries(n.substituteStats.details).forEach(([goodKey, count]) => {
+        totalSubstituteDetails[goodKey] = (totalSubstituteDetails[goodKey] || 0) + count;
+      });
+    }
+  });
+
+  const customerTypeAnalysis = [];
+  Object.entries(totalServedByType).forEach(([type, served]) => {
+    if (customerTypes[type]) {
+      const ct = customerTypes[type];
+      const missed = totalMissedByType[type] || 0;
+      const substitute = totalSubstituteByType[type] || 0;
+      const total = served + missed;
+      const serviceRate = total > 0 ? Math.round((served / total) * 100) : 0;
+      customerTypeAnalysis.push({
+        type,
+        name: ct.name,
+        icon: ct.icon,
+        color: ct.color,
+        served,
+        missed,
+        substitute,
+        total,
+        serviceRate
+      });
+    }
+  });
+  customerTypeAnalysis.sort((a, b) => b.total - a.total);
 
   const nightRankByScore = [...completed].sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
   const nightRankByMiss = [...completed].sort((a, b) => a.misses - b.misses);
@@ -2231,6 +2351,9 @@ function generateWeeklyReport() {
     totalSales,
     totalMisses,
     totalServed,
+    totalMissed,
+    totalSubServed,
+    totalSubMissed,
     avgServiceRate,
     totalScore,
     avgScore,
@@ -2240,7 +2363,9 @@ function generateWeeklyReport() {
     grade,
     gradeTitle,
     gradeDesc,
-    uniqueEvents
+    uniqueEvents,
+    customerTypeAnalysis,
+    totalSubstituteDetails
   };
 }
 
@@ -2282,9 +2407,9 @@ function openWeeklyReport() {
           <div class="week-summary-value">${report.totalMisses}</div>
           <div class="week-summary-label">累计缺货次数</div>
         </div>
-        <div class="week-summary-card">
-          <div class="week-summary-value">${report.totalScore}</div>
-          <div class="week-summary-label">总评分</div>
+        <div class="week-summary-card" style="background:linear-gradient(135deg, rgba(230,162,60,0.12) 0%, rgba(230,162,60,0.05) 100%); border:1px solid rgba(230,162,60,0.3);">
+          <div class="week-summary-value" style="color:#e6a23c;">🔄 ${report.totalSubServed}</div>
+          <div class="week-summary-label">替代服务次数</div>
         </div>
         <div class="week-summary-card">
           <div class="week-summary-value">${report.avgScore}</div>
@@ -2293,6 +2418,61 @@ function openWeeklyReport() {
       </div>
     </div>
   `;
+
+  if (report.customerTypeAnalysis && report.customerTypeAnalysis.length > 0) {
+    html += `
+      <div class="weekly-report-section">
+        <h3>👥 顾客类型分析</h3>
+        <div class="weekly-customer-analysis">
+          ${report.customerTypeAnalysis.map(cta => {
+            const servePercent = cta.total > 0 ? Math.round((cta.served / cta.total) * 100) : 0;
+            const subPercent = cta.total > 0 ? Math.round((cta.substitute / cta.total) * 100) : 0;
+            const missPercent = cta.total > 0 ? Math.round((cta.missed / cta.total) * 100) : 0;
+            return `
+              <div class="weekly-customer-item">
+                <div class="weekly-customer-header">
+                  <span class="weekly-customer-icon" style="background:${cta.color}20; border:1px solid ${cta.color};">${cta.icon}</span>
+                  <span class="weekly-customer-name">${cta.name}</span>
+                  <span class="weekly-customer-total">共 ${cta.total} 位</span>
+                </div>
+                <div class="weekly-customer-stats">
+                  <span style="color:#74b06a;">✓ 服务 ${cta.served} (${servePercent}%)</span>
+                  ${cta.substitute > 0 ? `<span style="color:#e6a23c;">🔄 替代 ${cta.substitute} (${subPercent}%)</span>` : ''}
+                  ${cta.missed > 0 ? `<span style="color:#d45f4c;">✗ 流失 ${cta.missed} (${missPercent}%)</span>` : ''}
+                </div>
+                <div class="weekly-customer-bar">
+                  <div class="weekly-customer-bar-fill" style="width:${100 - missPercent}%; background:linear-gradient(90deg, #74b06a 0%, #74b06a ${100 - subPercent}%, #e6a23c ${100 - subPercent}%, #e6a23c 100%);"></div>
+                  <div class="weekly-customer-bar-fill miss" style="width:${missPercent}%; left:${100 - missPercent}%;"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  if (report.totalSubServed > 0 && Object.keys(report.totalSubstituteDetails || {}).length > 0) {
+    const subDetails = Object.entries(report.totalSubstituteDetails)
+      .filter(([goodKey, count]) => count > 0 && goods[goodKey])
+      .sort((a, b) => b[1] - a[1])
+      .map(([goodKey, count]) => `${goods[goodKey].icon}${goods[goodKey].name}×${count}`)
+      .join('、');
+    html += `
+      <div class="weekly-report-section">
+        <h3>🔄 替代购买汇总</h3>
+        <div style="background:linear-gradient(90deg, rgba(230,162,60,0.12) 0%, transparent 100%); padding:12px 16px; border-radius:8px; border-left:4px solid #e6a23c;">
+          <div style="font-size:14px; color:#cdd7cb; margin-bottom:4px;">
+            本周共成功完成 <strong style="color:#74b06a; font-size:16px;">${report.totalSubServed}</strong> 次替代服务
+            ${report.totalSubMissed > 0 ? `，替代失败 <strong style="color:#d45f4c;">${report.totalSubMissed}</strong> 次` : ''}
+          </div>
+          <div style="font-size:13px; color:#8fa192;">
+            替代需求商品：${subDetails}
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   html += `
     <div class="weekly-report-section">
@@ -4767,6 +4947,36 @@ function formatTickTime(tick) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+function extractCustomerStats(customersObj) {
+  if (!customersObj) return null;
+  const stats = {
+    byType: {},
+    substituteServed: customersObj.substituteServedCount || 0,
+    substituteMissed: customersObj.substituteMissedCount || 0,
+    totalServed: customersObj.servedCount || 0,
+    totalMissed: customersObj.missedCount || 0
+  };
+  Object.entries(customerTypes).forEach(([ctId, ct]) => {
+    const served = customersObj.servedByType?.[ctId] || 0;
+    const missed = customersObj.missedByType?.[ctId] || 0;
+    const subServed = customersObj.substituteServedByType?.['sub_' + ctId] || 0;
+    const total = served + missed + subServed;
+    if (total > 0) {
+      stats.byType[ctId] = {
+        id: ctId,
+        name: ct.name,
+        icon: ct.icon,
+        color: ct.color,
+        served: served,
+        missed: missed,
+        substituteServed: subServed,
+        total: total
+      };
+    }
+  });
+  return stats;
+}
+
 function generateNightReportFromReplay(replayData) {
   if (!replayData || !replayData.frames || replayData.frames.length === 0) {
     return null;
@@ -5062,8 +5272,43 @@ function generateNightReportFromReplay(replayData) {
 
   const served = lastFrame.customers ? lastFrame.customers.servedCount : 0;
   const missed = lastFrame.customers ? lastFrame.customers.missedCount : 0;
+  const subServed = lastFrame.customers?.substituteServedCount || 0;
+  const subMissed = lastFrame.customers?.substituteMissedCount || 0;
   const total = served + missed;
-  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+
+  let satScore = 0;
+  let satTotal = 0;
+  Object.entries(lastFrame.customers?.servedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionServed || 1.0);
+      satTotal += count;
+    }
+  });
+  Object.entries(lastFrame.customers?.substituteServedByType || {}).forEach(([subKey, count]) => {
+    if (!subKey.startsWith('sub_')) return;
+    const ctId = subKey.substring(4);
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionSubstitute || 0.8);
+      satTotal += count;
+    }
+  });
+  Object.entries(lastFrame.customers?.missedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore -= count * (ct.satisfactionMiss || 1.0);
+      satTotal += count;
+    }
+  });
+  const serviceRate = satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
+
+  const customerStats = extractCustomerStats(lastFrame.customers);
+  const substituteStats = {
+    served: subServed,
+    missed: subMissed,
+    details: lastFrame.sessionSubstituteSales ? { ...lastFrame.sessionSubstituteSales } : {}
+  };
 
   return {
     timelineEvents: timelineEvents,
@@ -5071,12 +5316,16 @@ function generateNightReportFromReplay(replayData) {
     worstShelf: worstShelfInfo,
     goodStats: goodStats,
     shelfStats: shelfStats,
+    customerStats: customerStats,
+    substituteStats: substituteStats,
     finalScore: resultInfo && resultInfo.totalFinalScore !== undefined ? resultInfo.totalFinalScore : (lastFrame.sales + (lastFrame.energy || 0) * 2 - lastFrame.misses * 15),
     serviceRate: serviceRate,
     misses: lastFrame.misses,
     sales: lastFrame.sales,
     served: served,
     missed: missed,
+    subServed: subServed,
+    subMissed: subMissed,
     levelId: levelId,
     levelName: level.name,
     levelIcon: level.icon,
@@ -5088,8 +5337,36 @@ function generateNightReportFromState() {
   const level = getCurrentLevel();
   const served = state.customers.servedCount;
   const missed = state.customers.missedCount;
+  const subServed = state.customers.substituteServedCount || 0;
+  const subMissed = state.customers.substituteMissedCount || 0;
   const total = served + missed;
-  const serviceRate = total > 0 ? Math.round((served / total) * 100) : 100;
+
+  let satScore = 0;
+  let satTotal = 0;
+  Object.entries(state.customers.servedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionServed || 1.0);
+      satTotal += count;
+    }
+  });
+  Object.entries(state.customers.substituteServedByType || {}).forEach(([subKey, count]) => {
+    if (!subKey.startsWith('sub_')) return;
+    const ctId = subKey.substring(4);
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore += count * (ct.satisfactionSubstitute || 0.8);
+      satTotal += count;
+    }
+  });
+  Object.entries(state.customers.missedByType || {}).forEach(([ctId, count]) => {
+    const ct = customerTypes[ctId];
+    if (ct && count > 0) {
+      satScore -= count * (ct.satisfactionMiss || 1.0);
+      satTotal += count;
+    }
+  });
+  const serviceRate = satTotal > 0 ? Math.max(0, Math.min(100, Math.round((satScore / satTotal) * 100))) : (total > 0 ? Math.round((served / total) * 100) : 100);
   const baseScore = Math.max(0, state.sales + state.energy * 2 - state.misses * 15);
   const goalsBonus = calcGoalsBonus();
   let schedulingBonus = 0;
@@ -5267,18 +5544,29 @@ function generateNightReportFromState() {
   }
   shelfStats.sort((a, b) => b.missCount - a.missCount);
 
+  const customerStats = extractCustomerStats(state.customers);
+  const substituteStats = {
+    served: subServed,
+    missed: subMissed,
+    details: state.sessionSubstituteSales ? { ...state.sessionSubstituteSales } : {}
+  };
+
   return {
     timelineEvents: timelineEvents,
     worstGood: worstGood,
     worstShelf: worstShelfInfo,
     goodStats: goodStats,
     shelfStats: shelfStats,
+    customerStats: customerStats,
+    substituteStats: substituteStats,
     finalScore: finalScore,
     serviceRate: serviceRate,
     misses: state.misses,
     sales: state.sales,
     served: served,
     missed: missed,
+    subServed: subServed,
+    subMissed: subMissed,
     levelId: currentLevelId,
     levelName: level.name,
     levelIcon: level.icon,
@@ -5406,6 +5694,75 @@ function renderNightReportShelfStats(shelfStats) {
   nightReportShelfStats.innerHTML = html;
 }
 
+function renderNightReportCustomerStats(customerStats, substituteStats) {
+  if (!nightReportCustomerStats) return;
+  if (!customerStats || Object.keys(customerStats.byType || {}).length === 0) {
+    nightReportCustomerStats.innerHTML = '<p style="color:#8ba390;text-align:center;padding:20px;">暂无顾客类型数据</p>';
+    return;
+  }
+
+  const typeList = Object.values(customerStats.byType).sort((a, b) => b.total - a.total);
+  const maxTotal = Math.max(...typeList.map(t => t.total), 1);
+
+  let substituteHtml = '';
+  if (substituteStats && (substituteStats.served > 0 || substituteStats.missed > 0)) {
+    const subDetails = [];
+    Object.entries(substituteStats.details || {}).forEach(([goodKey, count]) => {
+      if (count > 0 && goods[goodKey]) {
+        subDetails.push(`${goods[goodKey].icon}${goods[goodKey].name}×${count}`);
+      }
+    });
+    substituteHtml = `
+      <div class="report-substitute-summary" style="background:linear-gradient(90deg, rgba(230,162,60,0.15) 0%, transparent 100%); padding:10px 12px; border-radius:6px; margin-bottom:12px; border-left:3px solid #e6a23c;">
+        <div style="font-weight:600; color:#e6a23c; margin-bottom:4px;">🔄 替代购买汇总</div>
+        <div style="font-size:12px; color:#cdd7cb;">
+          成功替代 <strong style="color:#74b06a;">${substituteStats.served}</strong> 次
+          ${substituteStats.missed > 0 ? ` · 替代失败 <strong style="color:#d45f4c;">${substituteStats.missed}</strong> 次` : ''}
+          ${subDetails.length > 0 ? `<br><span style="color:#8fa192;">替代需求：${subDetails.join('、')}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  const html = typeList.map((cs, idx) => {
+    const totalPercent = (cs.total / maxTotal) * 100;
+    const servePercent = cs.total > 0 ? Math.round(((cs.served + cs.substituteServed) / cs.total) * 100) : 0;
+    const subPercent = cs.total > 0 ? Math.round((cs.substituteServed / cs.total) * 100) : 0;
+    const missPercent = cs.total > 0 ? Math.round((cs.missed / cs.total) * 100) : 0;
+
+    return `
+      <div class="report-stat-row">
+        <div class="report-stat-left">
+          <div class="report-stat-icon" style="background:${cs.color}20; border:1px solid ${cs.color};">${cs.icon}</div>
+          <div class="report-stat-info">
+            <div class="report-stat-name">
+              ${cs.name}
+              <span style="font-size:11px; color:${cs.color}; font-weight:500; margin-left:6px;">共 ${cs.total} 位</span>
+            </div>
+            <div class="report-stat-detail">
+              正常服务 ${cs.served}
+              ${cs.substituteServed > 0 ? ` · 🔄替代 ${cs.substituteServed}` : ''}
+              ${cs.missed > 0 ? ` · 😠流失 ${cs.missed}` : ''}
+              ${servePercent >= 70 ? '<span style="color:#74b06a;"> ✓ 满意</span>' : '<span style="color:#d45f4c;"> ✗ 不满</span>'}
+            </div>
+          </div>
+        </div>
+        <div class="report-stat-right">
+          <div class="report-stat-bar">
+            <div class="report-stat-bar-fill sale" style="width:${100 - missPercent}%"></div>
+            <div class="report-stat-bar-fill miss" style="width:${missPercent}%; left:${100 - missPercent}%;"></div>
+          </div>
+          <div class="report-stat-bar" style="margin-top:3px; background:transparent;">
+            <div class="report-stat-bar-fill" style="width:${servePercent}%; background:linear-gradient(90deg, #74b06a 0%, #74b06a ${100 - subPercent}%, #e6a23c ${100 - subPercent}%, #e6a23c 100%);"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  nightReportCustomerStats.innerHTML = substituteHtml + html;
+}
+
 function openNightReport(reportData) {
   if (!reportData) {
     reportData = generateNightReportFromState();
@@ -5420,6 +5777,8 @@ function openNightReport(reportData) {
   nightReportData.misses = reportData.misses;
   nightReportData.levelId = reportData.levelId;
   nightReportData.levelName = reportData.levelName;
+  nightReportData.customerStats = reportData.customerStats;
+  nightReportData.substituteStats = reportData.substituteStats;
 
   nightReportSubtitle.textContent = `${reportData.levelIcon || '🏪'} 第 ${reportData.levelId} 关 · ${reportData.levelName}${reportData.specialRule ? ` · ${reportData.specialRule.icon} ${reportData.specialRule.name}` : ''}`;
   reportFinalScore.textContent = reportData.finalScore;
@@ -5447,6 +5806,7 @@ function openNightReport(reportData) {
   renderNightReportTimeline(reportData.timelineEvents);
   renderNightReportStats(reportData.goodStats);
   renderNightReportShelfStats(reportData.shelfStats);
+  renderNightReportCustomerStats(reportData.customerStats, reportData.substituteStats);
 
   if (replayHasSaved()) {
     nightReportReplayBtn.classList.remove('hidden');
@@ -7094,6 +7454,8 @@ function finish(reason) {
     serviceRate: serviceRate,
     served: served,
     missed: missed,
+    subServed: subServed,
+    subMissed: subMissed,
     finalScore: totalFinalScore,
     energy: state.energy,
     goals: state.goals.map(g => ({
@@ -7103,7 +7465,16 @@ function finish(reason) {
 })),
     events: eventHistory.slice(),
     goodsStats: goodsStats,
-    shelfStats: shelfStats
+    shelfStats: shelfStats,
+    customerStats: extractCustomerStats(state.customers),
+    substituteStats: {
+      served: subServed,
+      missed: subMissed,
+      details: { ...(state.sessionSubstituteSales || {}) }
+    },
+    servedByType: { ...(state.customers.servedByType || {}) },
+    missedByType: { ...(state.customers.missedByType || {}) },
+    substituteServedByType: { ...(state.customers.substituteServedByType || {}) }
   };
   const isWeekComplete = recordNightResult(nightData);
 
@@ -7150,6 +7521,35 @@ function generateSchedulingComparisonHtml() {
   const totalDiff = actualTotal - expectedTotal;
   const totalMatch = expectedTotal > 0 ? Math.round((1 - Math.abs(totalDiff) / expectedTotal) * 100) : 100;
   let totalMatchClass = totalMatch >= 80 ? 'good' : totalMatch >= 60 ? 'ok' : 'bad';
+
+  const subServed = actual.substituteServed || 0;
+  const subMissed = actual.substituteMissed || 0;
+
+  let customerTypeRows = '';
+  if (expected.expectedCustomerTypes) {
+    const actualByType = actual.servedByType || {};
+    Object.entries(expected.expectedCustomerTypes).forEach(([type, expectedCount]) => {
+      if (customerTypes[type]) {
+        const ct = customerTypes[type];
+        const actualCount = (actualByType[type] || 0) + (actual.missedByType?.[type] || 0);
+        const diff = actualCount - expectedCount;
+        const typeMatch = expectedCount > 0 ? Math.round((1 - Math.abs(diff) / expectedCount) * 100) : (actualCount === 0 ? 100 : 0);
+        let typeMatchClass = typeMatch >= 70 ? 'good' : typeMatch >= 50 ? 'ok' : 'bad';
+        const subCount = actual.substituteServedByType?.[`substitute_${type}`] || 0;
+        customerTypeRows += `
+          <tr>
+            <td><span style="color:${ct.color};">${ct.icon} ${ct.name}</span></td>
+            <td class="comparison-expected">约 ${expectedCount} 位</td>
+            <td class="comparison-actual ${diff > 0 ? 'over' : ''}">
+              ${actualCount} 位 ${diff !== 0 ? `(${diff > 0 ? '+' : ''}${diff})` : ''}
+              ${subCount > 0 ? `<br><span style="font-size:11px; color:#e6a23c;">🔄替代 ${subCount} 位</span>` : ''}
+            </td>
+            <td><span class="comparison-match ${typeMatchClass}">${typeMatch}%</span></td>
+          </tr>
+        `;
+      }
+    });
+  }
 
   let goodsRows = '';
   goodKeys.forEach(key => {
@@ -7216,8 +7616,37 @@ function generateSchedulingComparisonHtml() {
             <td class="comparison-actual ${actual.totalMissed > 3 ? 'over' : ''}">${actual.totalMissed || 0} 位</td>
             <td><span class="comparison-match ${(actual.totalMissed || 0) <= 2 ? 'good' : (actual.totalMissed || 0) <= 5 ? 'ok' : 'bad'}">${(actual.totalMissed || 0) <= 2 ? '优秀' : (actual.totalMissed || 0) <= 5 ? '合格' : '不足'}</span></td>
           </tr>
+          ${subServed > 0 || subMissed > 0 ? `
+          <tr style="background:rgba(230,162,60,0.08);">
+            <td>🔄 替代服务</td>
+            <td class="comparison-expected">-</td>
+            <td class="comparison-actual" style="color:#e6a23c;">
+              成功 ${subServed} 次
+              ${subMissed > 0 ? `<br><span style="font-size:11px; color:#d45f4c;">失败 ${subMissed} 次</span>` : ''}
+            </td>
+            <td><span class="comparison-match ${subMissed === 0 ? 'good' : subMissed <= 2 ? 'ok' : 'bad'}">${subMissed === 0 ? '完美' : subMissed <= 2 ? '良好' : '需改善'}</span></td>
+          </tr>
+          ` : ''}
         </tbody>
       </table>
+
+      ${customerTypeRows ? `
+      <h4 style="margin:14px 0 8px; color:#7a5a10; font-size:14px;">👥 顾客类型对比</h4>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>顾客类型</th>
+            <th>预期到访</th>
+            <th>实际到访</th>
+            <th>匹配度</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${customerTypeRows}
+        </tbody>
+      </table>
+      ` : ''}
+
       <h4 style="margin:14px 0 8px; color:#7a5a10; font-size:14px;">📦 商品需求对比</h4>
       <table class="comparison-table">
         <thead>
@@ -7655,7 +8084,9 @@ function selectStrategy(strategyId) {
 function calculateExpectedStats(curve, goodKeys, level) {
   let totalExpectedCustomers = 0;
   const expectedDemandByGood = {};
+  const expectedCustomerTypes = {};
   goodKeys.forEach(key => expectedDemandByGood[key] = 0);
+  Object.keys(customerTypes).forEach(type => expectedCustomerTypes[type] = 0);
   let maxIntensity = 0;
   let pressureTicks = 0;
   curve.forEach((segment, idx) => {
@@ -7668,6 +8099,9 @@ function calculateExpectedStats(curve, goodKeys, level) {
       const weight = segment.goodWeights[key] || 1;
       const totalWeight = goodKeys.reduce((sum, k) => sum + (segment.goodWeights[k] || 1), 0);
       expectedDemandByGood[key] += Math.round(expectedCount * (weight / totalWeight));
+    });
+    Object.entries(customerTypes).forEach(([type, ct]) => {
+      expectedCustomerTypes[type] += Math.round(expectedCount * (ct.weight / 100));
     });
   });
   const avgPressure = curve.reduce((sum, s) => sum + s.intensity, 0) / curve.length;
@@ -7682,6 +8116,7 @@ function calculateExpectedStats(curve, goodKeys, level) {
   return {
     totalExpectedCustomers,
     expectedDemandByGood,
+    expectedCustomerTypes,
     maxIntensity,
     avgPressure,
     pressureTicks,
@@ -7872,7 +8307,7 @@ function recordActualCustomer(goodKey, tickIndex, served, customerTypeId, isSubs
     schedulingState.actualStats.totalServed += 1;
     if (isSubstitute) {
       schedulingState.actualStats.substituteServed += 1;
-      const subKey = 'sub_' + ctId;
+      const subKey = 'substitute_' + ctId;
       schedulingState.actualStats.substituteServedByType[subKey] = (schedulingState.actualStats.substituteServedByType[subKey] || 0) + 1;
     } else {
       schedulingState.actualStats.servedByType[ctId] = (schedulingState.actualStats.servedByType[ctId] || 0) + 1;
