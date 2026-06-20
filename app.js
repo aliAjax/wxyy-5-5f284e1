@@ -8509,6 +8509,8 @@ window.__schedulingTestApi = {
   levels,
   STRATEGY_TEMPLATES,
   TRAINING_THEMES,
+  replayRecorder,
+  replayPlayer,
   get state() {
     return state;
   },
@@ -8518,6 +8520,8 @@ window.__schedulingTestApi = {
   get training() {
     return training;
   },
+  set currentLevelId(v) { currentLevelId = v; },
+  get currentLevelId() { return currentLevelId; },
   stopTimer() {
     if (timer) {
       clearInterval(timer);
@@ -8529,10 +8533,21 @@ window.__schedulingTestApi = {
       clearInterval(timer);
       timer = null;
     }
+    if (replayPlayer.timer) {
+      clearInterval(replayPlayer.timer);
+      replayPlayer.timer = null;
+    }
+    replayPlayer.active = false;
+    replayPlayer.playing = false;
+    replayPlayer.data = null;
+    replayPlayer.currentFrameIndex = 0;
+    replayBanner.classList.add("hidden");
     training.active = false;
     training.themeId = null;
     training.selectedThemeId = null;
     training.originalLevelId = null;
+    trainingBanner.classList.add("hidden");
+    boardEl.classList.remove("training-mode");
     currentLevelId = 1;
     state = freshState(false);
     schedulingState.active = false;
@@ -8547,6 +8562,7 @@ window.__schedulingTestApi = {
       totalMissed: 0
     };
     schedulingOverlay.classList.add("hidden");
+    resultEl.classList.add("hidden");
     render();
   },
   openSchedulingChallenge,
@@ -8562,11 +8578,142 @@ window.__schedulingTestApi = {
   getCurveSegmentForTick,
   getCurrentLevel,
   getCurrentLevelGoodKeys,
+  getTrainingConfigOverride,
   startSchedulingTrainingPreviewForTest() {
     this.resetForTest();
     training.active = true;
     training.themeId = "scheduling";
     openSchedulingForTraining();
+  },
+  replayStartRecording,
+  replayStopRecording,
+  replayHasSaved,
+  replayLoadSaved,
+  replayApplyFrame,
+  replayFormatTime: formatReplayTime,
+  replaySaveToStorage(data) {
+    localStorage.setItem("lastNightReplay", JSON.stringify(data));
+  },
+  replayClearFromStorage() {
+    localStorage.removeItem("lastNightReplay");
+  },
+  replayBuildMockData(levelId, frameCount) {
+    const frames = [];
+    const level = levels.find(l => l.id === levelId) || levels[0];
+    const base = freshState(false);
+    for (let i = 0; i < frameCount; i++) {
+      frames.push(deepCloneStateForReplay({
+        ...base,
+        minute: i,
+        energy: Math.max(0, 100 - i * 2),
+        sales: i * 10,
+        misses: Math.floor(i / 5),
+        running: i < frameCount - 1
+      }));
+    }
+    return {
+      levelId: level.id,
+      frames,
+      resultData: { score: frameCount * 5, serviceRate: 0.9, misses: Math.floor(frameCount / 5) }
+    };
+  },
+  replayEnterMode(replayData) {
+    if (replayPlayer.timer) {
+      clearInterval(replayPlayer.timer);
+      replayPlayer.timer = null;
+    }
+    replayPlayer.savedRealState = deepCloneStateForReplay(state);
+    replayPlayer.savedResultHtml = resultEl.innerHTML;
+    replayPlayer.savedResultVisible = !resultEl.classList.contains("hidden");
+    replayPlayer.savedLevelId = currentLevelId;
+    replayPlayer.data = replayData;
+    replayPlayer.currentFrameIndex = 0;
+    replayPlayer.speed = 1;
+    replayPlayer.active = true;
+    replayPlayer.playing = false;
+    resultEl.classList.add("hidden");
+    replayBanner.classList.remove("hidden");
+    if (replayData && replayData.levelId) {
+      currentLevelId = replayData.levelId;
+      renderLevelName();
+    }
+    replayApplyFrame(0);
+  },
+  replayExitMode() {
+    if (replayPlayer.timer) {
+      clearInterval(replayPlayer.timer);
+      replayPlayer.timer = null;
+    }
+    if (replayPlayer.savedRealState) {
+      state.minute = replayPlayer.savedRealState.minute;
+      state.energy = replayPlayer.savedRealState.energy;
+      state.sales = replayPlayer.savedRealState.sales;
+      state.misses = replayPlayer.savedRealState.misses;
+      state.player = { ...replayPlayer.savedRealState.player };
+      state.carry = [...replayPlayer.savedRealState.carry];
+    }
+    replayPlayer.active = false;
+    replayPlayer.playing = false;
+    replayPlayer.data = null;
+    replayPlayer.currentFrameIndex = 0;
+    replayPlayer.savedRealState = null;
+    replayBanner.classList.add("hidden");
+    if (replayPlayer.savedResultHtml !== null) {
+      resultEl.innerHTML = replayPlayer.savedResultHtml;
+      if (replayPlayer.savedResultVisible) resultEl.classList.remove("hidden");
+      replayPlayer.savedResultHtml = null;
+    }
+    if (replayPlayer.savedLevelId !== null) {
+      currentLevelId = replayPlayer.savedLevelId;
+      replayPlayer.savedLevelId = null;
+    }
+    render();
+  },
+  replayJumpToFrame(idx) {
+    if (!replayPlayer.active || !replayPlayer.data) return false;
+    const clamped = Math.max(0, Math.min(replayPlayer.data.frames.length - 1, idx));
+    replayApplyFrame(clamped);
+    return true;
+  },
+  replayGetFrameCount() {
+    return replayPlayer.data && replayPlayer.data.frames ? replayPlayer.data.frames.length : 0;
+  },
+  trainingSetTheme(themeId, levelIdOrNull) {
+    training.selectedThemeId = themeId;
+    training.themeId = themeId;
+    if (levelIdOrNull !== null && levelIdOrNull !== undefined) {
+      training.originalLevelId = currentLevelId;
+      currentLevelId = levelIdOrNull;
+    }
+  },
+  trainingStartSession: startTrainingSession,
+  trainingExitSession: exitTrainingSession,
+  trainingGetFinalState() {
+    return {
+      sales: state.sales,
+      misses: state.misses,
+      energy: state.energy,
+      served: state.customers.servedCount,
+      missed: state.customers.missedCount,
+      running: state.running,
+      active: training.active
+    };
+  },
+  setPlayerPos(x, y) {
+    state.player.x = x;
+    state.player.y = y;
+    render();
+  },
+  getShelfById(id) {
+    return state.shelves.find(s => s.id === id) || null;
+  },
+  setShelfStock(id, stock) {
+    const sh = state.shelves.find(s => s.id === id);
+    if (sh) {
+      sh.stock = Math.max(0, Math.min(sh.max, stock));
+      render();
+    }
+    return sh ? sh.stock : null;
   }
 };
 

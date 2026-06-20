@@ -386,6 +386,258 @@
       });
     });
 
+    describe("回放模式回归", () => {
+      it("mock 数据构建器生成的帧结构完整且数量匹配", () => {
+        const data = api.replayBuildMockData(1, 20);
+        expect(data.levelId).toBe(1);
+        expect(data.frames).toHaveLength(20);
+        expect(data.resultData).toBeDefined();
+        expect(data.frames[0].minute).toBe(0);
+        expect(data.frames[19].minute).toBe(19);
+        expect(data.frames[0].energy).toBe(100);
+        expect(data.frames[19].energy).toBeLessThanOrEqual(100);
+        expect(data.frames[0].sales).toBe(0);
+        expect(data.frames[19].sales).toBe(190);
+        data.frames.forEach(f => {
+          expect(f.player).toBeDefined();
+          expect(f.shelves).toBeDefined();
+          expect(f.customers).toBeDefined();
+          expect(f.customers.incoming).toBeDefined();
+          expect(f.customers.waiting).toBeDefined();
+          expect(f.goals).toBeDefined();
+        });
+      });
+
+      it("进入回放模式后 UI 切换，帧计数正确并可跳帧", () => {
+        resetApp();
+        const data = api.replayBuildMockData(2, 30);
+        api.replayEnterMode(data);
+        expect(api.replayPlayer.active).toBeTruthy();
+        expect(api.replayGetFrameCount()).toBe(30);
+        const bannerHidden = appWindow.document.getElementById("replayBanner").classList.contains("hidden");
+        expect(bannerHidden).toBe(false);
+        expect(api.replayPlayer.currentFrameIndex).toBe(0);
+        expect(api.state.minute).toBe(0);
+        api.replayJumpToFrame(10);
+        expect(api.replayPlayer.currentFrameIndex).toBe(10);
+        expect(api.state.minute).toBe(10);
+        expect(api.state.sales).toBe(100);
+        api.replayJumpToFrame(999);
+        expect(api.replayPlayer.currentFrameIndex).toBe(29);
+        expect(api.state.minute).toBe(29);
+      });
+
+      it("回放时间格式化按预期补零", () => {
+        expect(api.replayFormatTime(0)).toBe("00:00");
+        expect(api.replayFormatTime(59)).toBe("00:59");
+        expect(api.replayFormatTime(60)).toBe("01:00");
+        expect(api.replayFormatTime(125)).toBe("02:05");
+      });
+
+      it("回放入口使用固定 seed 录得的数据能存入和清出 localStorage", () => {
+        resetApp();
+        api.replayClearFromStorage();
+        expect(api.replayHasSaved()).toBe(false);
+        const data = withSeed(1234, () => api.replayBuildMockData(3, 15));
+        api.replaySaveToStorage(data);
+        expect(api.replayHasSaved()).toBe(true);
+        const loaded = api.replayLoadSaved();
+        expect(loaded.levelId).toBe(3);
+        expect(loaded.frames).toHaveLength(15);
+        expect(loaded.resultData.score).toBe(75);
+        api.replayClearFromStorage();
+        expect(api.replayHasSaved()).toBe(false);
+      });
+
+      it("跳转到最后一帧后使用与录入一致的 seed 数据一致", () => {
+        resetApp();
+        const data1 = withSeed(777, () => api.replayBuildMockData(1, 25));
+        const data2 = withSeed(777, () => api.replayBuildMockData(1, 25));
+        expect(JSON.stringify(data1.frames[12].player)).toEqual(JSON.stringify(data2.frames[12].player));
+        expect(JSON.stringify(data1.resultData)).toEqual(JSON.stringify(data2.resultData));
+        api.replayEnterMode(data1);
+        api.replayJumpToFrame(12);
+        expect(api.state.sales).toBe(120);
+        expect(api.state.minute).toBe(12);
+      });
+
+      it("退出回放模式后状态还原，横幅隐藏", () => {
+        resetApp();
+        api.currentLevelId = 1;
+        const stateBefore = { sales: api.state.sales, minute: api.state.minute, energy: api.state.energy };
+        const data = api.replayBuildMockData(2, 20);
+        api.replayEnterMode(data);
+        api.replayJumpToFrame(15);
+        expect(api.currentLevelId).toBe(2);
+        api.replayExitMode();
+        expect(api.replayPlayer.active).toBe(false);
+        const bannerHidden = appWindow.document.getElementById("replayBanner").classList.contains("hidden");
+        expect(bannerHidden).toBe(true);
+        expect(api.state.sales).toBe(stateBefore.sales);
+        expect(api.state.minute).toBe(stateBefore.minute);
+        expect(api.state.energy).toBe(stateBefore.energy);
+        expect(api.currentLevelId).toBe(1);
+      });
+
+      it("进入回放模式后再调用 resetForTest 可正常清理回放状态", () => {
+        resetApp();
+        api.replayEnterMode(api.replayBuildMockData(1, 10));
+        expect(api.replayPlayer.active).toBeTruthy();
+        resetApp();
+        expect(api.replayPlayer.active).toBe(false);
+        expect(api.replayGetFrameCount()).toBe(0);
+        const bannerHidden = appWindow.document.getElementById("replayBanner").classList.contains("hidden");
+        expect(bannerHidden).toBe(true);
+      });
+    });
+
+    describe("训练模式回归", () => {
+      it("所有训练主题配置完整，含 id/name/config/难度标签", () => {
+        const themes = Object.values(api.TRAINING_THEMES);
+        expect(themes.length).toBeGreaterThanOrEqual(4);
+        themes.forEach(theme => {
+          expect(theme.id).toBeDefined();
+          expect(theme.name).toBeDefined();
+          expect(theme.icon).toBeDefined();
+          expect(theme.difficulty).toBeDefined();
+          expect(theme.difficultyLabel).toBeDefined();
+          expect(theme.description).toBeDefined();
+          expect(Array.isArray(theme.objectives)).toBeTruthy();
+          expect(theme.objectives.length).toBeGreaterThan(0);
+          expect(typeof theme.config).toBe("object");
+        });
+      });
+
+      it("getTrainingConfigOverride 在非训练模式返回默认值", () => {
+        resetApp();
+        expect(api.training.active).toBe(false);
+        expect(api.getTrainingConfigOverride("customerBaseGap", 3)).toBe(3);
+        expect(api.getTrainingConfigOverride("duration", 120)).toBe(120);
+      });
+
+      it("queue 主题按配置覆盖 gap 与等待时间", () => {
+        resetApp();
+        api.trainingSetTheme("queue", 1);
+        api.training.active = true;
+        expect(api.getTrainingConfigOverride("customerBaseGap", 3)).toBe(1);
+        expect(api.getTrainingConfigOverride("customerWaitMin", 3)).toBe(2);
+        expect(api.getTrainingConfigOverride("customerWaitMax", 6)).toBe(4);
+      });
+
+      it("event 主题按配置缩短事件最小间隔", () => {
+        resetApp();
+        api.trainingSetTheme("event", 1);
+        api.training.active = true;
+        expect(api.getTrainingConfigOverride("eventMinGap", 5)).toBe(2);
+        expect(api.getTrainingConfigOverride("eventBaseChance", 0.25)).toBe(0.55);
+      });
+
+      it("dualCarry 主题强制双手搬运标记打开", () => {
+        resetApp();
+        api.trainingSetTheme("dualCarry", 1);
+        api.training.active = true;
+        expect(api.getTrainingConfigOverride("forceDualCarry", false)).toBe(true);
+      });
+
+      it("durationMultiplier 正确按比例计算并向下取整", () => {
+        resetApp();
+        api.trainingSetTheme("queue", 1);
+        api.training.active = true;
+        const v = api.getTrainingConfigOverride("duration", 100);
+        expect(v).toBe(80);
+        expect(Number.isInteger(v)).toBe(true);
+      });
+
+      it("训练设置主题后可正确切回原始关卡", async () => {
+        resetApp();
+        const original = api.currentLevelId;
+        api.trainingSetTheme("queue", 2);
+        expect(api.currentLevelId).toBe(2);
+        api.trainingExitSession(false);
+        expect(api.training.active).toBe(false);
+        expect(api.currentLevelId).toBe(original);
+        const bannerHidden = appWindow.document.getElementById("trainingBanner").classList.contains("hidden");
+        expect(bannerHidden).toBe(true);
+      });
+
+      it("trainingGetFinalState 返回训练结束时的状态快照", () => {
+        resetApp();
+        api.trainingSetTheme("queue", 1);
+        api.training.active = true;
+        const snap = api.trainingGetFinalState();
+        expect(typeof snap.sales).toBe("number");
+        expect(typeof snap.misses).toBe("number");
+        expect(typeof snap.energy).toBe("number");
+        expect(typeof snap.served).toBe("number");
+        expect(typeof snap.missed).toBe("number");
+        expect(typeof snap.running).toBe("boolean");
+        expect(snap.active).toBe(true);
+      });
+
+      it("resetForTest 会关闭训练标志并隐藏训练横幅", () => {
+        resetApp();
+        api.trainingSetTheme("queue", 1);
+        api.training.active = true;
+        const banner = appWindow.document.getElementById("trainingBanner");
+        banner.classList.remove("hidden");
+        resetApp();
+        expect(api.training.active).toBe(false);
+        expect(api.training.themeId).toBeNull();
+        expect(banner.classList.contains("hidden")).toBe(true);
+      });
+
+      it("scheduling 训练主题预览 + 强制 rushHour 策略与原测试一致", async () => {
+        resetApp();
+        withSeed(901, () => api.startSchedulingTrainingPreviewForTest());
+        await wait(80);
+        expect(api.training.active).toBeTruthy();
+        expect(api.TRAINING_THEMES.scheduling.config.forceStrategy).toBe("rushHour");
+        expect(api.schedulingState.selectedStrategy).toBe("rushHour");
+        expect(api.schedulingState.generatedCurve.length).toBeGreaterThan(0);
+        expect(api.schedulingState.previewData.curveBars).toHaveLength(20);
+        const skipHidden = appWindow.document.getElementById("schedulingSkipBtn").classList.contains("hidden");
+        expect(skipHidden).toBeTruthy();
+      });
+    });
+
+    describe("基础工具与状态护栏", () => {
+      it("setPlayerPos 能正确移动玩家并触发渲染", () => {
+        resetApp();
+        api.setPlayerPos(2, 3);
+        expect(api.state.player.x).toBe(2);
+        expect(api.state.player.y).toBe(3);
+      });
+
+      it("setShelfStock 按 max 上限裁剪输入值", () => {
+        resetApp();
+        const shelf = api.getShelfById("A");
+        expect(shelf).toBeDefined();
+        const after = api.setShelfStock("A", shelf.max + 10);
+        expect(after).toBe(shelf.max);
+        const zero = api.setShelfStock("A", -5);
+        expect(zero).toBe(0);
+      });
+
+      it("三个关卡配置均可在 levels 中查找并包含 goodKeys", () => {
+        [1, 2, 3].forEach(id => {
+          const lv = api.levels.find(l => l.id === id);
+          expect(lv).toBeDefined();
+          expect(Array.isArray(lv.goodKeys)).toBeTruthy();
+          expect(lv.goodKeys.length).toBeGreaterThan(0);
+        });
+      });
+
+      it("goodKeys 中的每种商品在 goods 字典中均有定义", () => {
+        api.levels.forEach(lv => {
+          lv.goodKeys.forEach(k => {
+            expect(api.goods[k]).toBeDefined();
+            expect(typeof api.goods[k].name).toBe("string");
+            expect(typeof api.goods[k].price).toBe("number");
+          });
+        });
+      });
+    });
+
     async function runAllTests() {
       const runBtn = document.getElementById("runBtn");
       runBtn.disabled = true;

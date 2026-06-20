@@ -1,0 +1,15 @@
+{
+  "name": "night-shift-stocker",
+  "version": "1.0.0",
+  "description": "深夜便利店补货 - 三文件零依赖浏览器游戏",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 19876",
+    "dev": "python3 -m http.server 19876",
+    "check": "node scripts/check.js",
+    "lint": "node scripts/check.js",
+    "test:open": "open http://localhost:19876/test.html",
+    "app:open": "open http://localhost:19876/index.html",
+    "clear:storage": "node scripts/clear-storage-keys.js"
+  }
+}
